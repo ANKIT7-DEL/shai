@@ -90,7 +90,7 @@ pub fn searcher(llm: Arc<LlmClient>, model: String) -> impl Agent {
     let todowrite = Box::new(TodoWriteTool::new(todo_storage.clone()));
     let toolbox: Vec<Box<dyn AnyTool>> = vec![fetch, find, ls, read, todoread, todowrite];
     
-    AgentBuilder::new(Box::new(SearcherBrain{llm: llm.clone(), model}))
+    AgentBuilder::with_brain(Box::new(SearcherBrain{llm: llm.clone(), model}))
     .tools(toolbox)
     .build()
 }

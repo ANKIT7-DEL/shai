@@ -4,23 +4,17 @@ use axum::{
     Router,
 };
 use futures::stream::Stream;
-use shai_core::agent::AgentBuilder;
 use std::convert::Infallible;
-use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use uuid::Uuid;
 
 pub mod apis;
 
-/// Function that creates a new agent for each request
-/// Takes message_history and returns an AgentBuilder
-pub type AgentFactory = Arc<dyn Fn(Vec<shai_llm::ChatMessage>) -> AgentBuilder + Send + Sync>;
-
-/// Server state containing the agent factory
+/// Server state containing the agent config name
 #[derive(Clone)]
 pub struct ServerState {
-    pub agent_factory: AgentFactory,
+    pub agent_config_name: Option<String>,
 }
 
 /// Stream wrapper that detects client disconnection
@@ -67,10 +61,10 @@ impl Drop for DisconnectionHandler {
 
 /// Start the HTTP server with SSE streaming
 pub async fn start_server(
-    agent_factory: AgentFactory,
+    agent_config_name: Option<String>,
     addr: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = ServerState { agent_factory };
+    let state = ServerState { agent_config_name };
 
     let app = Router::new()
         // Simple API

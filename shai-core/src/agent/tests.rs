@@ -156,7 +156,7 @@ async fn test_stop_current_task() {
     init_test_logging();
     
     let sleeping_tool: Box<dyn AnyTool> = Box::new(SleepingTool::new(5000)); // 5 seconds
-    let mut agent = AgentBuilder::new(Box::new(SleepingThinker::new()))
+    let mut agent = AgentBuilder::with_brain(Box::new(SleepingThinker::new()))
             .id("test-stop-task-agent")
             .goal("Test goal to start running")
             .tools(vec![sleeping_tool])
@@ -223,7 +223,7 @@ async fn test_tool_completes_normally() {
     let sleeping_tool: Box<dyn AnyTool> = Box::new(SleepingTool::new(1000)); // 1 second
     let tools = vec![sleeping_tool];
     
-    let mut agent = AgentBuilder::new(Box::new(SleepingThinker::new()))
+    let mut agent = AgentBuilder::with_brain(Box::new(SleepingThinker::new()))
         .id("test-normal-completion-agent")
         .goal("Test goal to start running")
         .tools(tools)
@@ -285,7 +285,7 @@ async fn test_event_handling() {
     let received_events = Arc::new(Mutex::new(Vec::<String>::new()));
     let events_clone = received_events.clone();
     
-    let mut agent = AgentBuilder::new(Box::new(SleepingThinker::new()))
+    let mut agent = AgentBuilder::with_brain(Box::new(SleepingThinker::new()))
         .id("test-event-handling-agent")
         .goal("Test goal to generate events")
         .tools(tools)
@@ -411,7 +411,7 @@ async fn test_agent_with_real_tools() {
     let ls_tool: Box<dyn AnyTool> = Box::new(LsTool::new());
     let tools = vec![read_tool, ls_tool];
     
-    let mut agent = AgentBuilder::new(Box::new(RealToolsThinker::new()))
+    let mut agent = AgentBuilder::with_brain(Box::new(RealToolsThinker::new()))
         .id("test-real-tools-agent")
         .goal("Test using real tools from toolkit")
         .tools(tools)

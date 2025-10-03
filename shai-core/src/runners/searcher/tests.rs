@@ -19,7 +19,7 @@ async fn create_searcher_agent_with_goal(goal: &str) -> impl Agent {
     let model = llm_client.default_model().await.expect("default model");
     println!("using model: {:?}", model);
     
-    crate::agent::AgentBuilder::new(Box::new(SearcherBrain::new(llm_client, model)))
+    crate::agent::AgentBuilder::with_brain(Box::new(SearcherBrain::new(llm_client, model)))
         .goal(goal)
         .tools(vec![
             Box::new(crate::tools::FetchTool::new()),

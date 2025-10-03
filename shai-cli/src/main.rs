@@ -14,7 +14,7 @@ use shai_core::config::config::ShaiConfig;
 use shai_core::config::agent::AgentConfig;
 use shai_core::agent::builder::AgentBuilder;
 use shai_core::runners::clifixer::fix::clifix;
-use shai_llm::{ChatMessage, ChatMessageContent};
+use shai_llm::{ChatMessage, ChatMessageContent, LlmClient};
 use tui::auth::AppAuth;
 use tui::theme::{apply_gradient, logo, logo_cyan, SHAI_WHITE, SHAI_YELLOW};
 use tui::App;
@@ -466,11 +466,6 @@ pub async fn handle_postcmd(exit_code: i32, command: String) -> Result<(), Box<d
 }
 
 async fn handle_serve(agent_name: Option<String>, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    use shai_core::agent::Brain;
-    use shai_core::runners::coder::coder::CoderBrain;
-    use shai_llm::ChatMessageContent;
-    use crate::headless::tools::ToolConfig;
-
     // Initialize tracing for HTTP server logs
     tracing_subscriber::fmt()
         .with_target(false)
@@ -480,49 +475,18 @@ async fn handle_serve(agent_name: Option<String>, port: u16) -> Result<(), Box<d
 
     println!("{}", logo_cyan());
 
-    // Create agent factory based on config
-    let agent_factory: shai_http::AgentFactory = if let Some(agent_name) = agent_name.clone() {
-        println!("Starting server with agent: \x1b[1m{}\x1b[0m", agent_name);
-        let config = AgentConfig::load(&agent_name)
-            .map_err(|e| format!("Failed to load agent '{}': {}", agent_name, e))?;
-
-        Arc::new(move |trace: Vec<ChatMessage>| {
-            let config_clone = config.clone();
-            let rt = tokio::runtime::Handle::current();
-            let builder = rt.block_on(async move {
-                AgentBuilder::from_config(config_clone).await
-                    .expect("Failed to create agent from config")
-            });
-
-            builder
-                .with_traces(trace)
-                .sudo()
-        })
+    if let Some(ref name) = agent_name {
+        println!("Starting server with agent: \x1b[1m{}\x1b[0m", name);
     } else {
         println!("Starting server with default agent");
-        let (llm_client, model) = ShaiConfig::get_llm().await?;
-        println!("\x1b[2m░ {} on {}\x1b[0m", model, llm_client.provider().name());
-
-        let llm_arc = Arc::new(llm_client);
-        let model_clone = model.clone();
-
-        Arc::new(move |trace: Vec<ChatMessage>| {
-            let toolbox = ToolConfig::new().build_toolbox();
-            let brain: Box<dyn Brain> = Box::new(CoderBrain::new(llm_arc.clone(), model_clone.clone()));
-
-            AgentBuilder::new(brain)
-                .with_traces(trace)
-                .tools(toolbox)
-                .sudo()
-        })
-    };
+    }
 
     let addr = format!("127.0.0.1:{}", port);
     println!("Server starting on \x1b[1mhttp://{}\x1b[0m", addr);
-    println!("Endpoint: \x1b[1mPOST /api/v1/multimodal\x1b[0m");
+    println!("Endpoint: \x1b[1mPOST /v1/multimodal\x1b[0m");
     println!("\nPress Ctrl+C to stop\n");
 
-    shai_http::start_server(agent_factory, &addr).await?;
+    shai_http::start_server(agent_name, &addr).await?;
 
     Ok(())
 }

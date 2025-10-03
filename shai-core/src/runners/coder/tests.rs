@@ -40,7 +40,7 @@ async fn create_coder_agent_with_goal(goal: &str) -> impl Agent {
     let write = Box::new(crate::tools::WriteTool::new(fs_log.clone()));
     let toolbox: Vec<Box<dyn AnyTool>> = vec![bash, edit, multiedit, fetch, find, ls, read, todoread, todowrite, write];
     
-    crate::agent::AgentBuilder::new(Box::new(CoderBrain::new(llm_client, model)))
+    crate::agent::AgentBuilder::with_brain(Box::new(CoderBrain::new(llm_client, model)))
         .goal(goal)
         .tools(toolbox)
         .sudo()

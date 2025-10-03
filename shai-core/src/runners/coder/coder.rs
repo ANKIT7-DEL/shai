@@ -122,7 +122,7 @@ pub fn coder(llm: Arc<LlmClient>, model: String) -> impl Agent {
     let write = Box::new(WriteTool::new(fs_log.clone()));
     let toolbox: Vec<Box<dyn AnyTool>> = vec![bash, edit, multiedit, fetch, find, ls, read, todoread, todowrite, write];
 
-    AgentBuilder::new(Box::new(CoderBrain::new(llm.clone(), model)))
+    AgentBuilder::with_brain(Box::new(CoderBrain::new(llm.clone(), model)))
     .tools(toolbox)
     .build()
 }

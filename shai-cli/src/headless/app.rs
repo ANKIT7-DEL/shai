@@ -50,13 +50,8 @@ impl AppHeadless {
 
         let agent = if let Some(agent_name) = agent_name {
             // Use custom agent from config
-            let config = AgentConfig::load(&agent_name)
-                .map_err(|e| format!("Failed to load agent '{}': {}", agent_name, e))?;
-            
-            let agent_builder = AgentBuilder::from_config(config).await
-                .map_err(|e| format!("Failed to create agent from config: {}", e))?;
-            
-            agent_builder
+            AgentBuilder::create(Some(agent_name)).await
+                .map_err(|e| format!("Failed to create agent: {}", e))?
                 .with_traces(initial_trace)
                 .sudo()
                 .build()
@@ -64,31 +59,41 @@ impl AppHeadless {
             // Use default agent with provided tools
             let (llm_client, model) = ShaiConfig::get_llm().await?;
             eprintln!("\x1b[2m░ {} on {}\x1b[0m", model, llm_client.provider().name());
-            
-            // Handle tool selection
-            let tools = match (tools, remove) {
-                (Some(tools_str), _) => {
-                    let selected_tools = parse_tools_list(&tools_str)?;
-                    ToolConfig::new().add_tools(selected_tools)
-                }
-                (None, Some(remove_str)) => {
-                    let tools_to_remove = parse_tools_list(&remove_str)?;
-                    ToolConfig::new().remove_tools(tools_to_remove)
-                }
-                (None, None) => ToolConfig::new(),
-            };
-            
-            let toolbox = tools.build_toolbox();
-            let brain: Box<dyn Brain> = match self.kind {
-                AgentKind::Coder => Box::new(CoderBrain::new(Arc::new(llm_client), model)),
-                AgentKind::Searcher => Box::new(SearcherBrain::new(Arc::new(llm_client), model)),
-            };
 
-            AgentBuilder::new(brain)
-                .with_traces(initial_trace)
-                .tools(toolbox)
-                .sudo()
-                .build()
+            // Handle tool selection if needed
+            if tools.is_some() || remove.is_some() {
+                // Need custom tool configuration
+                let tools = match (tools, remove) {
+                    (Some(tools_str), _) => {
+                        let selected_tools = parse_tools_list(&tools_str)?;
+                        ToolConfig::new().add_tools(selected_tools)
+                    }
+                    (None, Some(remove_str)) => {
+                        let tools_to_remove = parse_tools_list(&remove_str)?;
+                        ToolConfig::new().remove_tools(tools_to_remove)
+                    }
+                    (None, None) => ToolConfig::new(),
+                };
+
+                let toolbox = tools.build_toolbox();
+                let brain: Box<dyn Brain> = match self.kind {
+                    AgentKind::Coder => Box::new(CoderBrain::new(Arc::new(llm_client), model)),
+                    AgentKind::Searcher => Box::new(SearcherBrain::new(Arc::new(llm_client), model)),
+                };
+
+                AgentBuilder::with_brain(brain)
+                    .tools(toolbox)
+                    .with_traces(initial_trace)
+                    .sudo()
+                    .build()
+            } else {
+                // Use default agent
+                AgentBuilder::default().await
+                    .map_err(|e| format!("Failed to create default agent: {}", e))?
+                    .with_traces(initial_trace)
+                    .sudo()
+                    .build()
+            }
         };
 
         let result = agent

@@ -2,11 +2,10 @@ use shai_llm::{ChatMessage, LlmClient};
 use uuid::Uuid;
 use std::sync::Arc;
 
-
-
 use crate::tools::mcp::mcp_oauth::signin_oauth;
 use crate::tools::{create_mcp_client, get_mcp_tools, AnyTool, BashTool, EditTool, FetchTool, FindTool, FsOperationLog, LsTool, McpConfig, MultiEditTool, ReadTool, TodoReadTool, TodoStorage, TodoWriteTool, WriteTool};
 use crate::config::agent::AgentConfig;
+use crate::config::config::ShaiConfig;
 use crate::runners::coder::CoderBrain;
 use super::Brain;
 use super::AgentCore;
@@ -24,15 +23,65 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
-    pub fn new(brain: Box<dyn Brain>) -> Self {
+    /// Create a new AgentBuilder with an optional config name
+    /// If None, creates a default agent with LLM from ShaiConfig
+    /// If Some(name), loads agent from config file
+    pub async fn create(config_name: Option<String>) -> Result<Self, AgentError> {
+        match config_name {
+            Some(name) => {
+                let config = AgentConfig::load(&name)
+                    .map_err(|e| AgentError::ConfigurationError(format!("Failed to load agent '{}': {}", name, e)))?;
+                Self::from_config(config).await
+            }
+            None => Self::default().await,
+        }
+    }
+
+    /// Create a default AgentBuilder using ShaiConfig LLM and default tools
+    pub async fn default() -> Result<Self, AgentError> {
+        // Get LLM from ShaiConfig
+        let (llm_client, model) = ShaiConfig::get_llm().await
+            .map_err(|e| AgentError::ConfigurationError(format!("Failed to get LLM from config: {}", e)))?;
+
+        // Create default brain
+        let brain = Box::new(CoderBrain::new(Arc::new(llm_client), model));
+
+        // Create default toolbox (using ToolConfig from shai-cli)
+        // For now, create basic tools - we can expand this later
+        let tools = Self::create_default_tools();
+
+        Ok(Self::with_brain(brain).tools(tools))
+    }
+
+    /// Create AgentBuilder with a specific brain
+    pub fn with_brain(brain: Box<dyn Brain>) -> Self {
         Self {
             session_id: Uuid::new_v4().to_string(),
-            brain: brain,
+            brain,
             goal: None,
             trace: vec![],
             available_tools: vec![],
             permissions: ClaimManager::new(),
         }
+    }
+
+    /// Create default set of tools
+    fn create_default_tools() -> Vec<Box<dyn AnyTool>> {
+        let fs_log = Arc::new(FsOperationLog::new());
+        let todo_storage = Arc::new(TodoStorage::new());
+
+        vec![
+            Box::new(BashTool::new()),
+            Box::new(EditTool::new(fs_log.clone())),
+            Box::new(MultiEditTool::new(fs_log.clone())),
+            Box::new(FetchTool::new()),
+            Box::new(FindTool::new()),
+            Box::new(LsTool::new()),
+            Box::new(ReadTool::new(fs_log.clone())),
+            Box::new(TodoReadTool::new(todo_storage.clone())),
+            Box::new(TodoWriteTool::new(todo_storage.clone())),
+            Box::new(WriteTool::new(fs_log)),
+        ]
     }
 }
 
@@ -128,7 +177,7 @@ impl AgentBuilder {
             }
         }
 
-        Ok(Self::new(brain)
+        Ok(Self::with_brain(brain)
             .tools(tools)
             .id(&format!("agent-{}", config.name)))
     }

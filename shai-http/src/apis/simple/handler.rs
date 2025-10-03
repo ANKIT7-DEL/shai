@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use futures::stream::{Stream, StreamExt};
-use shai_core::agent::{Agent, AgentEvent};
+use shai_core::agent::{Agent, AgentEvent, AgentBuilder};
 use shai_llm::{ChatMessage, ChatMessageContent, ToolCall as LlmToolCall, Function};
 use std::convert::Infallible;
 use tracing::{error, info, debug};
@@ -27,7 +27,14 @@ pub async fn handle_multimodal_query_stream(
     let trace = build_message_trace(&payload);
 
     // Create a new agent for this request
-    let mut agent = (state.agent_factory)(trace).build();
+    let mut agent = AgentBuilder::create(state.agent_config_name.clone()).await
+        .map_err(|e| {
+            error!("[{}] Failed to create agent: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .with_traces(trace)
+        .sudo()
+        .build();
     let controller = agent.controller();
     let event_rx = agent.watch();
 
@@ -125,7 +132,14 @@ pub async fn handle_multimodal_query(
     let trace = build_message_trace(&payload);
 
     // Create a new agent for this request
-    let mut agent = (state.agent_factory)(trace).build();
+    let mut agent = AgentBuilder::create(state.agent_config_name.clone()).await
+        .map_err(|e| {
+            error!("[{}] Failed to create agent: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .with_traces(trace)
+        .sudo()
+        .build();
     let mut event_rx = agent.watch();
 
     // Run the agent
@@ -250,18 +264,6 @@ fn build_message_trace(query: &MultiModalQuery) -> Vec<ChatMessage> {
 /// Log agent events with minimal information
 fn log_agent_event(session_id: &Uuid, event: &AgentEvent) {
     match event {
-        AgentEvent::StatusChanged { new_status, .. } => {
-            use shai_core::agent::PublicAgentState;
-            match new_status {
-                PublicAgentState::Completed { .. } => {
-                    info!("[{}] Status: Completed", session_id);
-                }
-                PublicAgentState::Paused { .. } => {
-                    info!("[{}] Status: Paused", session_id);
-                }
-                _ => {}
-            }
-        }
         AgentEvent::BrainResult { thought, .. } => {
             if let Ok(msg) = thought {
                 if let ChatMessage::Assistant { content: Some(ChatMessageContent::Text(text)), .. } = msg {
