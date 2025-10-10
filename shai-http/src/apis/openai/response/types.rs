@@ -4,7 +4,11 @@
 /// Reference: https://platform.openai.com/docs/api-reference/responses-streaming
 
 use serde::{Deserialize, Serialize};
-use openai_dive::v1::resources::response::response::{ResponseObject, ResponseOutput};
+use openai_dive::v1::resources::response::{
+    request::{ContentInput, ContentItem, ResponseInput, ResponseInputItem, ResponseParameters},
+    response::{ResponseObject, ResponseOutput, Role},
+};
+use shai_llm::{ChatMessage, ChatMessageContent};
 
 /// Base streaming event structure
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -147,4 +151,88 @@ impl ResponseStreamEvent {
             ResponseEventType::ResponseCompleted => "response.completed",
         }
     }
+}
+
+/// Convert OpenAI Response API input to ChatMessage trace
+pub fn build_message_trace(params: &ResponseParameters) -> Vec<ChatMessage> {
+    let mut trace = Vec::new();
+
+    // Add instructions as system message if present
+    if let Some(instructions) = &params.instructions {
+        trace.push(ChatMessage::System {
+            content: ChatMessageContent::Text(instructions.clone()),
+            name: None,
+        });
+    }
+
+    // Convert input messages
+    match &params.input {
+        ResponseInput::Text(text) => {
+            trace.push(ChatMessage::User {
+                content: ChatMessageContent::Text(text.clone()),
+                name: None,
+            });
+        }
+        ResponseInput::List(items) => {
+            for item in items {
+                if let ResponseInputItem::Message(msg) = item {
+                    match &msg.role {
+                        Role::User => {
+                            // Convert content to text (simplified for now)
+                            let text = match &msg.content {
+                                ContentInput::Text(t) => t.clone(),
+                                ContentInput::List(items) => {
+                                    // For now, just extract text items
+                                    items
+                                        .iter()
+                                        .filter_map(|item| {
+                                            if let ContentItem::Text { text } = item {
+                                                Some(text.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                }
+                            };
+                            trace.push(ChatMessage::User {
+                                content: ChatMessageContent::Text(text),
+                                name: None,
+                            });
+                        }
+                        Role::Assistant => {
+                            let text = match &msg.content {
+                                ContentInput::Text(t) => t.clone(),
+                                ContentInput::List(items) => {
+                                    items
+                                        .iter()
+                                        .filter_map(|item| {
+                                            if let ContentItem::Text { text } = item {
+                                                Some(text.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                }
+                            };
+                            trace.push(ChatMessage::Assistant {
+                                content: Some(ChatMessageContent::Text(text)),
+                                tool_calls: None,
+                                name: None,
+                                audio: None,
+                                reasoning_content: None,
+                                refusal: None,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    trace
 }

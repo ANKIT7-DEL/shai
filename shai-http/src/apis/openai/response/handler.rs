@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use shai_core::agent::{Agent, AgentEvent, AgentBuilder};
 use openai_dive::v1::resources::response::{
     items::{FunctionToolCall, InputItemStatus},
-    request::{ContentInput, ContentItem, ResponseInput, ResponseInputItem, ResponseParameters},
+    request::ResponseParameters,
     response::{
         MessageStatus, OutputContent, OutputMessage, ReasoningStatus, ResponseObject,
         ResponseOutput, Role,
@@ -21,91 +21,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::{ServerState, DisconnectionHandler};
-use super::types::ResponseStreamEvent;
-
-/// Convert OpenAI Response API input to ChatMessage trace
-fn build_message_trace(params: &ResponseParameters) -> Vec<ChatMessage> {
-    let mut trace = Vec::new();
-
-    // Add instructions as system message if present
-    if let Some(instructions) = &params.instructions {
-        trace.push(ChatMessage::System {
-            content: ChatMessageContent::Text(instructions.clone()),
-            name: None,
-        });
-    }
-
-    // Convert input messages
-    match &params.input {
-        ResponseInput::Text(text) => {
-            trace.push(ChatMessage::User {
-                content: ChatMessageContent::Text(text.clone()),
-                name: None,
-            });
-        }
-        ResponseInput::List(items) => {
-            for item in items {
-                if let ResponseInputItem::Message(msg) = item {
-                    match &msg.role {
-                        Role::User => {
-                            // Convert content to text (simplified for now)
-                            let text = match &msg.content {
-                                ContentInput::Text(t) => t.clone(),
-                                ContentInput::List(items) => {
-                                    // For now, just extract text items
-                                    items
-                                        .iter()
-                                        .filter_map(|item| {
-                                            if let ContentItem::Text { text } = item {
-                                                Some(text.clone())
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
-                                }
-                            };
-                            trace.push(ChatMessage::User {
-                                content: ChatMessageContent::Text(text),
-                                name: None,
-                            });
-                        }
-                        Role::Assistant => {
-                            let text = match &msg.content {
-                                ContentInput::Text(t) => t.clone(),
-                                ContentInput::List(items) => {
-                                    items
-                                        .iter()
-                                        .filter_map(|item| {
-                                            if let ContentItem::Text { text } = item {
-                                                Some(text.clone())
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
-                                }
-                            };
-                            trace.push(ChatMessage::Assistant {
-                                content: Some(ChatMessageContent::Text(text)),
-                                tool_calls: None,
-                                name: None,
-                                audio: None,
-                                reasoning_content: None,
-                                refusal: None,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    trace
-}
+use super::types::{ResponseStreamEvent, build_message_trace};
 
 /// Handle OpenAI Response API - with streaming support
 pub async fn handle_response(
@@ -142,48 +58,20 @@ pub async fn handle_response(
     }
 }
 
-/// Handle streaming response
-async fn handle_response_stream(
-    state: ServerState,
-    payload: ResponseParameters,
+/// Create the response event stream from agent events
+fn create_response_event_stream(
+    event_rx: tokio::sync::broadcast::Receiver<AgentEvent>,
     session_id: Uuid,
-) -> Result<axum::response::Response, StatusCode> {
-    // Build the message trace from the request
-    let trace = build_message_trace(&payload);
-
-    // Create a new agent for this request
-    let mut agent = AgentBuilder::create(state.agent_config_name.clone())
-        .await
-        .map_err(|e| {
-            error!("[{}] Failed to create agent: {}", session_id, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .with_traces(trace)
-        .sudo()
-        .build();
-
-    let controller = agent.controller();
-    let event_rx = agent.watch();
-
-    // Spawn the agent to run in the background
-    let session_id_clone = session_id;
-    tokio::spawn(async move {
-        if let Err(e) = agent.run().await {
-            error!("[{}] Agent execution error: {}", session_id_clone, e);
-        }
-    });
-
-    let model = payload.model.clone();
-    let created_at = chrono::Utc::now().timestamp() as u32;
-    let payload_clone = payload.clone();
-
-    // Stream events back via SSE
-    let stream = futures::stream::unfold(
+    model: String,
+    created_at: u32,
+    payload: ResponseParameters,
+) -> impl futures::stream::Stream<Item = Option<ResponseStreamEvent>> {
+    futures::stream::unfold(
         (BroadcastStream::new(event_rx), false, 0u32, Vec::new(), String::new()),
         move |(mut rx, mut done, mut seq, mut output, mut accumulated_text)| {
             let session_id_str = session_id.to_string();
             let model = model.clone();
-            let payload = payload_clone.clone();
+            let payload = payload.clone();
 
             async move {
                 if done {
@@ -377,7 +265,47 @@ async fn handle_response_stream(
             }
         },
     )
-    .filter_map(|event_opt| async move {
+}
+
+/// Handle streaming response
+async fn handle_response_stream(
+    state: ServerState,
+    payload: ResponseParameters,
+    session_id: Uuid,
+) -> Result<axum::response::Response, StatusCode> {
+    // Build the message trace from the request
+    let trace = build_message_trace(&payload);
+
+    // Create a new agent for this request
+    let mut agent = AgentBuilder::create(state.agent_config_name.clone())
+        .await
+        .map_err(|e| {
+            error!("[{}] Failed to create agent: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .with_traces(trace)
+        .sudo()
+        .build();
+
+    let controller = agent.controller();
+    let event_rx = agent.watch();
+
+    // Spawn the agent to run in the background
+    let session_id_clone = session_id;
+    tokio::spawn(async move {
+        if let Err(e) = agent.run().await {
+            error!("[{}] Agent execution error: {}", session_id_clone, e);
+        }
+    });
+
+    let model = payload.model.clone();
+    let created_at = chrono::Utc::now().timestamp() as u32;
+
+    // Create the response event stream
+    let event_stream = create_response_event_stream(event_rx, session_id, model, created_at, payload);
+
+    // Convert to SSE stream
+    let stream = event_stream.filter_map(|event_opt| async move {
         event_opt.and_then(|event| {
             let event_name = event.event_name();
             match serde_json::to_string(&event) {
@@ -407,6 +335,8 @@ async fn handle_response_non_stream(
     payload: ResponseParameters,
     session_id: Uuid,
 ) -> Result<axum::response::Response, StatusCode> {
+    use super::types::{ResponseEventData, ResponseEventType};
+
     // Build the message trace from the request
     let trace = build_message_trace(&payload);
 
@@ -421,9 +351,9 @@ async fn handle_response_non_stream(
         .sudo()
         .build();
 
-    let mut event_rx = agent.watch();
+    let event_rx = agent.watch();
 
-    // Run the agent in the background
+    // Spawn the agent to run in the background
     let session_id_clone = session_id;
     tokio::spawn(async move {
         if let Err(e) = agent.run().await {
@@ -431,107 +361,40 @@ async fn handle_response_non_stream(
         }
     });
 
-    // Collect output items (tool calls, reasoning, messages)
-    let mut output = Vec::new();
-    let mut final_message = String::new();
-    let mut status = ReasoningStatus::Completed;
+    let model = payload.model.clone();
+    let created_at = chrono::Utc::now().timestamp() as u32;
 
-    while let Ok(event) = event_rx.recv().await {
-        match event {
-            // Capture assistant messages from brain results
-            AgentEvent::BrainResult { thought, .. } => {
-                if let Ok(msg) = thought {
-                    if let ChatMessage::Assistant {
-                        content: Some(ChatMessageContent::Text(text)),
-                        ..
-                    } = msg
-                    {
-                        final_message = text;
-                    }
-                }
-            }
-            // Add tool calls to output
-            AgentEvent::ToolCallStarted { call, .. } => {
-                info!("[{}] TOOL {}", session_id, call.tool_name);
-            }
-            AgentEvent::ToolCallCompleted { call, result, .. } => {
-                use shai_core::tools::ToolResult;
+    // Create the event stream using the same logic as streaming
+    let event_stream = create_response_event_stream(event_rx, session_id, model, created_at, payload);
 
-                let tool_status = match &result {
-                    ToolResult::Success { .. } => {
-                        info!("[{}] TOOL {} ✓", session_id, call.tool_name);
-                        InputItemStatus::Completed
-                    }
-                    ToolResult::Error { .. } => {
-                        info!("[{}] TOOL {} ✗", session_id, call.tool_name);
-                        InputItemStatus::Incomplete
-                    }
-                    ToolResult::Denied => {
-                        info!("[{}] TOOL {} ⊘", session_id, call.tool_name);
-                        InputItemStatus::Incomplete
-                    }
-                };
+    // Collect all events from the stream
+    let mut events = Vec::new();
+    tokio::pin!(event_stream);
 
-                // Add function tool call to output
-                output.push(ResponseOutput::FunctionToolCall(FunctionToolCall {
-                    id: call.tool_call_id.clone(),
-                    call_id: call.tool_call_id.clone(),
-                    name: call.tool_name.clone(),
-                    arguments: call.parameters.to_string(),
-                    status: tool_status,
-                }));
-            }
-
-            // Agent completed or paused - return the result
-            AgentEvent::Completed { message, success, .. } => {
-                if !message.is_empty() {
-                    final_message = message;
-                }
-                if !success {
-                    status = ReasoningStatus::Failed;
-                }
-                info!("[{}] Completed", session_id);
-                break;
-            }
-            AgentEvent::StatusChanged { new_status, .. } => {
-                use shai_core::agent::PublicAgentState;
-                if matches!(new_status, PublicAgentState::Paused { .. }) {
-                    info!("[{}] Paused", session_id);
-                    status = ReasoningStatus::Incomplete;
-                    break;
-                }
-            }
-            AgentEvent::Error { error } => {
-                error!("[{}] Agent error: {}", session_id, error);
-                status = ReasoningStatus::Failed;
-                break;
-            }
-            _ => {}
+    while let Some(event_result) = event_stream.next().await {
+        if let Some(event) = event_result {
+            events.push(event);
         }
     }
 
-    // Add final message to output
-    output.push(ResponseOutput::Message(OutputMessage {
-        id: Uuid::new_v4().to_string(),
-        role: Role::Assistant,
-        status: MessageStatus::Completed,
-        content: vec![OutputContent::Text {
-            text: final_message,
-            annotations: vec![],
-        }],
-    }));
+    // Find the last completed event which contains the final response
+    let final_response = events
+        .iter()
+        .rev()
+        .find_map(|event| {
+            if event.event_type == ResponseEventType::ResponseCompleted {
+                if let ResponseEventData::Response { response, .. } = &event.data {
+                    Some(response.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Build the response object
-    let response = build_response_object(
-        &session_id.to_string(),
-        &payload.model,
-        chrono::Utc::now().timestamp() as u32,
-        status,
-        output,
-        &payload,
-    );
-
-    Ok(Json(response).into_response())
+    Ok(Json(final_response).into_response())
 }
 
 /// Helper to build a ResponseObject
