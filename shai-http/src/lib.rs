@@ -69,6 +69,9 @@ pub async fn start_server(
     let app = Router::new()
         // Simple API
         .route("/v1/multimodal", post(apis::simple::handle_multimodal_query_stream))
+        // OpenAI-compatible APIs
+        .route("/v1/chat/completions", post(apis::openai::handle_chat_completion))
+        .route("/v1/responses", post(apis::openai::handle_response))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

@@ -30,3 +30,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
+
+# OpenAI types
+openai_dive = "1.2"
+chrono = { version = "0.4", features = ["serde"] }

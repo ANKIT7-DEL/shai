@@ -483,7 +483,10 @@ async fn handle_serve(agent_name: Option<String>, port: u16) -> Result<(), Box<d
 
     let addr = format!("127.0.0.1:{}", port);
     println!("Server starting on \x1b[1mhttp://{}\x1b[0m", addr);
-    println!("Endpoint: \x1b[1mPOST /v1/multimodal\x1b[0m");
+    println!("\nAvailable endpoints:");
+    println!("  \x1b[1mPOST /v1/chat/completions\x1b[0m    - OpenAI-compatible chat completion API");
+    println!("  \x1b[1mPOST /v1/responses\x1b[0m           - OpenAI-compatible responses API (stateless)");
+    println!("  \x1b[1mPOST /v1/multimodal\x1b[0m          - Multimodal query API (streaming)");
     println!("\nPress Ctrl+C to stop\n");
 
     shai_http::start_server(agent_name, &addr).await?;

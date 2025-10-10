@@ -21,7 +21,7 @@ pub async fn handle_multimodal_query_stream(
     Json(payload): Json<MultiModalQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
     let session_id = Uuid::new_v4();
-    info!("[{}] MultiModal query received", session_id);
+    info!("[{}] POST /v1/multimodal model={}", session_id, payload.model);
 
     // Build the message trace from the query
     let trace = build_message_trace(&payload);
@@ -126,7 +126,7 @@ pub async fn handle_multimodal_query(
     Json(payload): Json<MultiModalQuery>,
 ) -> Result<Json<MultiModalResponse>, StatusCode> {
     let session_id = Uuid::new_v4();
-    info!("[{}] MultiModal query received (model: {}, stream: {})", session_id, payload.model, payload.stream);
+    info!("[{}] POST /v1/multimodal model={} stream={}", session_id, payload.model, payload.stream);
 
     // Build the message trace from the query
     let trace = build_message_trace(&payload);
@@ -261,23 +261,15 @@ fn build_message_trace(query: &MultiModalQuery) -> Vec<ChatMessage> {
     trace
 }
 
-/// Log agent events with minimal information
+/// Log agent events with minimal information (no private data)
 fn log_agent_event(session_id: &Uuid, event: &AgentEvent) {
     match event {
-        AgentEvent::BrainResult { thought, .. } => {
-            if let Ok(msg) = thought {
-                if let ChatMessage::Assistant { content: Some(ChatMessageContent::Text(text)), .. } = msg {
-                    let preview = if text.len() > 50 {
-                        format!("{}...", &text[..50])
-                    } else {
-                        text.clone()
-                    };
-                    info!("[{}] Response: {}", session_id, preview);
-                }
-            }
+        AgentEvent::BrainResult { .. } => {
+            // Event only, no content
+            debug!("[{}] BrainResult", session_id);
         }
         AgentEvent::ToolCallStarted { call, .. } => {
-            info!("[{}] Tool: {}", session_id, call.tool_name);
+            info!("[{}] TOOL {}", session_id, call.tool_name);
         }
         AgentEvent::ToolCallCompleted { call, result, .. } => {
             use shai_core::tools::ToolResult;
@@ -286,7 +278,7 @@ fn log_agent_event(session_id: &Uuid, event: &AgentEvent) {
                 ToolResult::Error { .. } => "✗",
                 ToolResult::Denied => "⊘",
             };
-            info!("[{}] Tool: {} {}", session_id, call.tool_name, status);
+            info!("[{}] TOOL {} {}", session_id, call.tool_name, status);
         }
         AgentEvent::Completed { success, .. } => {
             info!("[{}] Completed: {}", session_id, if *success { "success" } else { "failed" });
