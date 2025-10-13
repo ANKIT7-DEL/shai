@@ -259,16 +259,22 @@ fn log_agent_event(session_id: &Uuid, event: &AgentEvent) {
             debug!("[{}] BrainResult", session_id);
         }
         AgentEvent::ToolCallStarted { call, .. } => {
-            info!("[{}] TOOL {}", session_id, call.tool_name);
+            info!("[{}] ToolCall: {}", session_id, call.tool_name);
         }
         AgentEvent::ToolCallCompleted { call, result, .. } => {
             use shai_core::tools::ToolResult;
-            let status = match result {
-                ToolResult::Success { .. } => "✓",
-                ToolResult::Error { .. } => "✗",
-                ToolResult::Denied => "⊘",
-            };
-            info!("[{}] TOOL {} {}", session_id, call.tool_name, status);
+            match result {
+                ToolResult::Success { .. } => {
+                    info!("[{}] ToolResult: {} ✓", session_id, call.tool_name);
+                }
+                ToolResult::Error { error, .. } => {
+                    let error_oneline = error.lines().next().unwrap_or(error);
+                    info!("[{}] ToolResult: {} ✗ {}", session_id, call.tool_name, error_oneline);
+                }
+                ToolResult::Denied => {
+                    info!("[{}] ToolResult: {} ⊘ Permission denied", session_id, call.tool_name);
+                }
+            }
         }
         AgentEvent::Completed { success, .. } => {
             info!("[{}] Completed: {}", session_id, if *success { "success" } else { "failed" });

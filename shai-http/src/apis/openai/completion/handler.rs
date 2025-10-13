@@ -56,16 +56,22 @@ pub async fn handle_chat_completion(
             }
             // Log tool calls
             AgentEvent::ToolCallStarted { call, .. } => {
-                info!("[{}] TOOL {}", session_id, call.tool_name);
+                info!("[{}] ToolCall: {}", session_id, call.tool_name);
             }
             AgentEvent::ToolCallCompleted { call, result, .. } => {
                 use shai_core::tools::ToolResult;
-                let status = match &result {
-                    ToolResult::Success { .. } => "✓",
-                    ToolResult::Error { .. } => "✗",
-                    ToolResult::Denied => "⊘",
-                };
-                info!("[{}] TOOL {} {}", session_id, call.tool_name, status);
+                match &result {
+                    ToolResult::Success { .. } => {
+                        info!("[{}] ToolResult: {} ✓", session_id, call.tool_name);
+                    }
+                    ToolResult::Error { error, .. } => {
+                        let error_oneline = error.lines().next().unwrap_or(error);
+                        info!("[{}] ToolResult: {} ✗ {}", session_id, call.tool_name, error_oneline);
+                    }
+                    ToolResult::Denied => {
+                        info!("[{}] ToolResult: {} ⊘ Permission denied", session_id, call.tool_name);
+                    }
+                }
             }
             // Agent completed or paused - return the result
             AgentEvent::Completed { message, success, .. } => {

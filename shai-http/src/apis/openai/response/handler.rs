@@ -111,7 +111,7 @@ fn create_response_event_stream(
                                     }
                                     // Tool calls
                                     AgentEvent::ToolCallStarted { call, .. } => {
-                                        info!("[{}] TOOL {}", session_id_str, call.tool_name);
+                                        info!("[{}] ToolCall: {}", session_id_str, call.tool_name);
 
                                         let tool_output = ResponseOutput::FunctionToolCall(FunctionToolCall {
                                             id: call.tool_call_id.clone(),
@@ -134,15 +134,16 @@ fn create_response_event_stream(
 
                                         let tool_status = match &result {
                                             ToolResult::Success { .. } => {
-                                                info!("[{}] TOOL {} ✓", session_id_str, call.tool_name);
+                                                info!("[{}] ToolResult: {} ✓", session_id_str, call.tool_name);
                                                 InputItemStatus::Completed
                                             }
-                                            ToolResult::Error { .. } => {
-                                                info!("[{}] TOOL {} ✗", session_id_str, call.tool_name);
+                                            ToolResult::Error { error, .. } => {
+                                                let error_oneline = error.lines().next().unwrap_or(error);
+                                                info!("[{}] ToolResult: {} ✗ {}", session_id_str, call.tool_name, error_oneline);
                                                 InputItemStatus::Incomplete
                                             }
                                             ToolResult::Denied => {
-                                                info!("[{}] TOOL {} ⊘", session_id_str, call.tool_name);
+                                                info!("[{}] ToolResult: {} ⊘ Permission denied", session_id_str, call.tool_name);
                                                 InputItemStatus::Incomplete
                                             }
                                         };
