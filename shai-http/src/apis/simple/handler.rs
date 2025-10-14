@@ -18,7 +18,6 @@ pub async fn handle_multimodal_query_stream(
 ) -> Result<Response, ErrorResponse> {
     let request_id = Uuid::new_v4();
 
-    // Extract session ID from path parameter if provided
     let session_id = session_id_param.map(|Path(id)| id);
     info!(
         "[{}] POST /v1/multimodal{} model={}",
@@ -27,16 +26,16 @@ pub async fn handle_multimodal_query_stream(
         payload.model
     );
 
-    // Build the message trace from the query
+    // build trace from query 
     let trace = build_message_trace(&payload);
 
-    // Handle the request through the session manager
-    // If session_id is None, this creates a new ephemeral session
-    // If session_id is Some, it will reuse or create that session
-    let (request_session, actual_session_id) = state.session_manager.handle_request(trace, session_id, request_id.to_string()).await
+    // get current session agent
+    let (request_session, actual_session_id) = state.session_manager
+        .handle_request(request_id.to_string(), session_id,  trace, Some(payload.model.clone()))
+        .await
         .map_err(|e| ErrorResponse::internal_error(format!("Failed to handle session: {}", e)))?;
 
-    // Create the formatter for Simple API
+    // Create the formatter for Simple Multimodal API
     let formatter = SimpleFormatter::new(payload.model.clone());
 
     // Create SSE stream - pass actual_session_id so it appears in the response 'id' field

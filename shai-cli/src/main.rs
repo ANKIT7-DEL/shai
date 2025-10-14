@@ -475,9 +475,8 @@ async fn handle_serve(port: u16, agent: Option<String>, ephemeral: bool) -> Resu
 
     let addr = format!("127.0.0.1:{}", port);
     let config = shai_http::ServerConfig::new(addr)
-        .with_agent(agent)
         .with_ephemeral(ephemeral)
-        .with_max_sessions(Some(100));
+        .with_max_sessions(Some(1));
 
     shai_http::start_server(config).await?;
 

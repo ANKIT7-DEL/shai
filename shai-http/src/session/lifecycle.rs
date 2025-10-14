@@ -2,68 +2,48 @@ use shai_core::agent::AgentController;
 use tokio::sync::OwnedMutexGuard;
 use tracing::debug;
 
-/// Trait for managing request lifecycle cleanup
-pub trait RequestLifecycle: Send {
-    // Cleanup happens automatically on Drop
-}
 
-/// Background lifecycle for persistent sessions
-/// Holds the controller lock for the duration of the request (stream)
-/// When dropped (stream completes), releases the lock so next request can proceed
-/// The session remains in the manager's HashMap for reuse
-pub struct BackgroundLifecycle {
-    _controller_guard: OwnedMutexGuard<AgentController>,
-    session_id: String,
-}
-
-impl BackgroundLifecycle {
-    pub fn new(controller_guard: OwnedMutexGuard<AgentController>, session_id: String) -> Self {
-        Self {
-            _controller_guard: controller_guard,
-            session_id,
-        }
-    }
-}
-
-impl Drop for BackgroundLifecycle {
-    fn drop(&mut self) {
-        debug!("[{}] Stream completed, releasing controller lock (background session)", self.session_id);
-    }
-}
-
-impl RequestLifecycle for BackgroundLifecycle {}
-
-/// Ephemeral lifecycle for temporary sessions
-/// When dropped (stream completes):
-/// - Cancels the agent via controller.cancel()
-/// - Releases the controller lock
-/// - Session will be removed from HashMap by the manager after stream completes
-pub struct EphemeralLifecycle {
-    controller_guard: OwnedMutexGuard<AgentController>,
-    session_id: String,
-}
-
-impl EphemeralLifecycle {
-    pub fn new(
+pub enum RequestLifecycle {
+    Background {
         controller_guard: OwnedMutexGuard<AgentController>,
         session_id: String,
-    ) -> Self {
-        Self {
-            controller_guard,
-            session_id,
+    },
+    Ephemeral {
+        controller_guard: OwnedMutexGuard<AgentController>,
+        session_id: String,
+    },
+}
+
+impl RequestLifecycle {
+    pub fn new(ephemeral: bool, controller_guard: OwnedMutexGuard<AgentController>, session_id: String) -> Self {
+        match ephemeral {
+            true => Self::Ephemeral { controller_guard, session_id },
+            false => Self::Background { controller_guard, session_id },
         }
     }
 }
 
-impl Drop for EphemeralLifecycle {
+impl Drop for RequestLifecycle {
     fn drop(&mut self) {
-        debug!("[] - [{}] Stream completed, canceling ephemeral agent", self.session_id);
-        // Cancel the agent - this will stop the agent loop gracefully
-        let ctrl = self.controller_guard.clone();
-        tokio::spawn(async move {
-            let _ = ctrl.cancel().await;
-        });
+        match self {
+            Self::Background { session_id, .. } => {
+                debug!(
+                    "[{}] Stream completed, releasing controller lock (background session)",
+                    session_id
+                );
+            }
+            Self::Ephemeral { controller_guard, session_id } => {
+                debug!(
+                    "[{}] Stream completed, destroying agent (ephemeral session)",
+                    session_id
+                );
+
+                // Clone before moving into async task
+                let ctrl = controller_guard.clone();
+                tokio::spawn(async move {
+                    let _ = ctrl.cancel().await;
+                });
+            }
+        }
     }
 }
-
-impl RequestLifecycle for EphemeralLifecycle {}

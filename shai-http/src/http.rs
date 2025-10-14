@@ -27,12 +27,6 @@ impl ServerConfig {
         }
     }
 
-    /// Set the agent name(s) for the server
-    pub fn with_agent(mut self, agent_name: Option<String>) -> Self {
-        self.session_manager.agent_name = agent_name;
-        self
-    }
-
     /// Set whether sessions are ephemeral by default
     pub fn with_ephemeral(mut self, ephemeral: bool) -> Self {
         self.session_manager.ephemeral = ephemeral;
@@ -67,9 +61,6 @@ pub async fn start_server(
         println!("  Max sessions: \x1b[1munlimited\x1b[0m");
     }
     println!("  Default mode: \x1b[1m{}\x1b[0m", if config.session_manager.ephemeral { "ephemeral" } else { "persistent" });
-    if let Some(ref agent) = config.session_manager.agent_name {
-        println!("  Default agent: \x1b[1m{}\x1b[0m", agent);
-    }
     println!();
 
     let state = ServerState {

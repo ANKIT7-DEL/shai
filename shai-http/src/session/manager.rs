@@ -6,16 +6,15 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use super::{AgentSession, RequestSession, SessionConfig};
+use shai_core::agent::AgentBuilder;
+use super::{AgentSession, RequestSession};
 
 /// Configuration for the session manager
 #[derive(Clone, Debug)]
 pub struct SessionManagerConfig {
     /// Maximum number of concurrent sessions (None = unlimited)
     pub max_sessions: Option<usize>,
-    /// Default agent name for new sessions
-    pub agent_name: Option<String>,
-    /// Whether sessions are ephemeral by default
+    /// Whether sessions are ephemeral or background (ephemeral session is destroyed after a single query)
     pub ephemeral: bool,
 }
 
@@ -23,7 +22,6 @@ impl Default for SessionManagerConfig {
     fn default() -> Self {
         Self {
             max_sessions: Some(100),
-            agent_name: None,
             ephemeral: false,
         }
     }
@@ -35,39 +33,30 @@ pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, Arc<AgentSession>>>>,
     max_sessions: Option<usize>,
     allow_creation: bool,
-    default_config: SessionConfig,
+    ephemeral: bool
 }
 
 impl SessionManager {
-    /// Create a new session manager
-    /// - `max_sessions`: Maximum number of concurrent sessions (None = unlimited)
-    /// - `default_config`: Default configuration for new sessions
     pub fn new(config: SessionManagerConfig) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             max_sessions: config.max_sessions,
             allow_creation: true,
-            default_config: SessionConfig { 
-                agent_name: config.agent_name, 
-                ephemeral: config.ephemeral
-            },
+            ephemeral: config.ephemeral
         }
     }
 
-    /// Create a new agent session
-    /// Spawns the agent task with cleanup logic for ephemeral sessions
     async fn create_session(
         &self,
         http_request_id: &String,
         session_id: &str,
-        config: SessionConfig,
+        agent_name: Option<String>,
+        ephemeral: bool,
     ) -> Result<Arc<AgentSession>, AgentError> {
-        use shai_core::agent::AgentBuilder;
-
         info!("[{}] - [{}] Creating new session", http_request_id, session_id);
 
         // Build the agent
-        let mut agent = AgentBuilder::create(config.agent_name.clone())
+        let mut agent = AgentBuilder::create(agent_name.clone().filter(|name| name != "default"))
             .await
             .map_err(|e| AgentError::ExecutionError(format!("Failed to create agent: {}", e)))?
             .sudo()
@@ -89,32 +78,30 @@ impl SessionManager {
                     error!("[] - [{}] Agent execution error: {}", sid_for_cleanup, e);
                 }
             }
-
-            // If ephemeral, remove from sessions HashMap when agent.run() exits
-            // This happens after lifecycle calls controller.cancel()
             sessions_for_cleanup.lock().await.remove(&sid_for_cleanup);
             info!("[] - [{}] session removed from manager", sid_for_cleanup);
         });
 
         let session = Arc::new(AgentSession::new(
+            session_id.to_string(),
             controller,
             event_rx,
             agent_task,
-            config,
-            session_id.to_string(),
+            agent_name,
+            ephemeral,
         ));
 
         Ok(session)
     }
 
-    /// Get or create a session for the given session ID
     async fn get_or_create_session(
         &self,
         http_request_id: &String,
         session_id: &str,
-        config: Option<SessionConfig>,
+        agent_name: Option<String>,
+        ephemeral: bool,
     ) -> Result<Arc<AgentSession>, AgentError> {
-        let sessions = self.sessions.lock().await;
+        let mut sessions = self.sessions.lock().await;
 
         // Check if session exists
         if let Some(session) = sessions.get(session_id) {
@@ -139,17 +126,9 @@ impl SessionManager {
             }
         }
 
-        // Create new session
-        let session_config = config.unwrap_or_else(|| self.default_config.clone());
+        let session = self.create_session(&http_request_id, session_id, agent_name, ephemeral).await?;
 
-        // Drop the lock before creating session (which spawns agent task)
-        drop(sessions);
-
-        let session = self.create_session(&http_request_id, session_id, session_config).await?;
-
-        // Re-acquire lock to insert into HashMap
-        self.sessions.lock().await.insert(session_id.to_string(), session.clone());
-
+        sessions.insert(session_id.to_string(), session.clone());
         Ok(session)
     }
 
@@ -158,35 +137,20 @@ impl SessionManager {
     /// - If `session_id` is None, generate a new ephemeral session ID
     pub async fn handle_request(
         &self,
-        trace: Vec<ChatMessage>,
-        session_id: Option<String>,
         http_request_id: String,
+        session_id: Option<String>,
+        trace: Vec<ChatMessage>,
+        agent_name: Option<String>
     ) -> Result<(RequestSession, String), AgentError> {
-        // Determine session ID
         let session_id = session_id.unwrap_or_else(|| {
-            // No session ID provided - generate a new UUID
-            // Will use default config (which has the configured ephemeral setting)
             Uuid::new_v4().to_string()
         });
 
-        // Get or create the session (using default config)
-        let session = self.get_or_create_session(&http_request_id, &session_id, None).await?;
-
-        // Handle the request
+        let session = self.get_or_create_session(&http_request_id, &session_id, agent_name, self.ephemeral).await?;
         let request_session = session.handle_request(&http_request_id, trace).await?;
 
-        // Cleanup is now handled automatically:
-        // 1. When stream completes, lifecycle Drop calls controller.cancel()
-        // 2. Agent task's agent.run() exits
-        // 3. Agent task cleanup code removes session from HashMap (for ephemeral only)
-
+        // Cleanup is handled automatically by the session's own lifecycle
         Ok((request_session, session_id))
-    }
-
-    /// Delete a session by ID
-    pub async fn delete_session(&self, session_id: &str) -> bool {
-        info!("[] - [{}] Deleting session", session_id);
-        self.sessions.lock().await.remove(session_id).is_some()
     }
 
     /// Cancel a session (stop the agent)

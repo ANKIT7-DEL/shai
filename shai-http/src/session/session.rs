@@ -6,15 +6,16 @@ use tokio::task::JoinHandle;
 use tracing::debug;
 use openai_dive::v1::resources::chat::ChatMessageContentPart;
 use shai_llm::ChatMessageContent;
+use super::RequestLifecycle;
 
-use super::{RequestSession, BackgroundLifecycle, EphemeralLifecycle};
 
-/// Configuration for creating a new agent session
-#[derive(Clone)]
-pub struct SessionConfig {
-    pub agent_name: Option<String>,
-    pub ephemeral: bool,
+/// Represents a single HTTP request session with automatic lifecycle management
+pub struct RequestSession {
+    pub controller: AgentController,
+    pub event_rx: Receiver<AgentEvent>,
+    pub lifecycle: RequestLifecycle
 }
+
 
 /// A single agent session - represents one running agent instance
 /// Can be ephemeral (destroyed after request) or persistent (kept alive)
@@ -22,22 +23,22 @@ pub struct AgentSession {
     controller: Arc<Mutex<AgentController>>,
     event_rx: Receiver<AgentEvent>,
     agent_task: JoinHandle<()>,
+
     pub session_id: String,
     pub agent_name: String,
     pub ephemeral: bool,
 }
 
 impl AgentSession {
-    /// Create a new agent session with the given agent and configuration
-    /// Called by SessionManager which handles the agent task spawning and cleanup
     pub fn new(
+        session_id: String,
         controller: AgentController,
         event_rx: Receiver<AgentEvent>,
         agent_task: JoinHandle<()>,
-        config: SessionConfig,
-        session_id: String,
+        agent_name: Option<String>,
+        ephemeral: bool,
     ) -> Self {
-        let agent_name_display = config.agent_name.clone().unwrap_or_else(|| "default".to_string());
+        let agent_name_display = agent_name.unwrap_or_else(|| "default".to_string());
 
         Self {
             controller: Arc::new(Mutex::new(controller)),
@@ -45,25 +46,24 @@ impl AgentSession {
             agent_task,
             session_id,
             agent_name: agent_name_display,
-            ephemeral: config.ephemeral,
+            ephemeral: ephemeral,
         }
     }
 
     pub async fn cancel(&self, http_request_id: &String)  -> Result<(), AgentError> {
-        debug!("[{}] - [{}] Acquiring controller lock", http_request_id, self.session_id);
-        let controller_guard = self.controller.clone().lock_owned().await;
-        debug!("[{}] - [{}] Controller lock acquired", http_request_id, self.session_id);
-        controller_guard.cancel().await
+        let ctrl = self.controller.clone().lock_owned().await;
+        debug!("[{}] - [{}] cancelling session", http_request_id, self.session_id);
+        ctrl.cancel().await
     }
 
     /// Handle a request for this agent session
     /// Returns a RequestSession that manages the lifecycle
     pub async fn handle_request(&self, http_request_id: &String, trace: Vec<ChatMessage>) -> Result<RequestSession, AgentError> {
-        debug!("[{}] - [{}] Acquiring controller lock", http_request_id, self.session_id);
         let controller_guard = self.controller.clone().lock_owned().await;
-        debug!("[{}] - [{}] Controller lock acquired", http_request_id, self.session_id);
+        debug!("[{}] - [{}] handling request", http_request_id, self.session_id);
 
-        // Send all user messages to the agent
+        // TODO
+        // make a new controller API to send a full trace
         for msg in trace {
             match msg {
                 ChatMessage::User { content, .. } => {
@@ -90,15 +90,9 @@ impl AgentSession {
 
         let event_rx = self.event_rx.resubscribe();
         let controller = controller_guard.clone();
+        let lifecycle = RequestLifecycle::new(self.ephemeral, controller_guard, self.session_id.clone());
 
-        // Choose lifecycle based on ephemeral flag
-        let lifecycle: Box<dyn super::RequestLifecycle> = if self.ephemeral {
-            Box::new(EphemeralLifecycle::new(controller_guard, self.session_id.clone()))
-        } else {
-            Box::new(BackgroundLifecycle::new(controller_guard, self.session_id.clone()))
-        };
-
-        Ok(RequestSession::new(controller, event_rx, lifecycle))
+        Ok(RequestSession{controller, event_rx, lifecycle})
     }
 
     pub fn is_ephemeral(&self) -> bool {
