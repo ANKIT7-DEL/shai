@@ -1,5 +1,6 @@
 // Streaming query example showing real-time response chunks
-use shai_llm::{client::LlmClient, provider::LlmError, ChatCompletionParameters, ChatMessage, ChatMessageContent};
+use shai_llm::{client::LlmClient, provider::LlmError};
+use openai_dive::v1::resources::chat::{ChatCompletionParameters, ChatMessage, ChatMessageContent};
 use futures::StreamExt;
 use openai_dive::v1::resources::chat::DeltaChatMessage;
 

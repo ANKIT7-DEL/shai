@@ -3,7 +3,8 @@ mod llm_integration_tests {
     use std::sync::Arc;
     use std::sync::Once;
     use tracing::debug;
-    use shai_llm::{ChatMessage, ChatMessageContent, LlmClient};
+    use openai_dive::v1::resources::chat::{ChatMessage, ChatMessageContent};
+    use shai_llm::LlmClient;
     use openai_dive::v1::resources::chat::{ChatCompletionParametersBuilder, ChatCompletionToolChoice};
     use crate::logging::LoggingConfig;
     use crate::tools::{

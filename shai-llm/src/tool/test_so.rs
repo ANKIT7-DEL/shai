@@ -2,7 +2,8 @@
 mod structured_output_integration_tests {
     use std::sync::Arc;
     use openai_dive::v1::resources::chat::ChatCompletionParametersBuilder;
-    use crate::{ChatMessage, ChatMessageContent, client::LlmClient, ToolDescription};
+    use openai_dive::v1::resources::chat::{ChatMessage, ChatMessageContent};
+    use crate::{client::LlmClient, ToolDescription};
     use crate::tool::{AssistantResponse, StructuredOutputBuilder};
     use tokio;
     use paste;

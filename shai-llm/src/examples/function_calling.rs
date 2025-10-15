@@ -1,5 +1,6 @@
 // Function calling example using OVH provider instead of Mistral
-use shai_llm::{client::LlmClient, provider::LlmError, ChatCompletionParameters, ChatMessage, ChatMessageContent, 
+use shai_llm::{client::LlmClient, provider::LlmError};
+use openai_dive::v1::resources::chat::{ChatCompletionParameters, ChatMessage, ChatMessageContent,
                ChatCompletionTool, ChatCompletionToolType, ChatCompletionFunction};
 use serde_json::json;
 use openai_dive::v1::resources::chat::{ChatCompletionParametersBuilder, ChatCompletionToolChoice};
@@ -123,7 +124,7 @@ async fn main() -> Result<(), LlmError> {
                         },
                         message.clone(),
                         ChatMessage::Tool {
-                            content: function_result,
+                            content: ChatMessageContent::Text(function_result),
                             tool_call_id: tool_call.id.clone(),
                         }
                     ])

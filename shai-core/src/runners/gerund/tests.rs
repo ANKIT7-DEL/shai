@@ -1,6 +1,7 @@
 use super::gerund::gerund;
 use super::prompt::gerund_prompt;
-use shai_llm::{ChatMessage, ChatMessageContent, client::LlmClient};
+use openai_dive::v1::resources::chat::{ChatMessage, ChatMessageContent};
+use shai_llm::client::LlmClient;
 
 /// Try to get an LLM client from available environment variables, fallback to Ollama
 fn get_test_llm_client() -> LlmClient {

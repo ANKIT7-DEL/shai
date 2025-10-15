@@ -141,7 +141,7 @@ mod tests {
                     }])
                 },
                 ChatMessage::Tool {
-                    content: "Successfully updated file '/Users/lloiseau/Work/test/main.py' with 22 bytes".to_string(),
+                    content: ChatMessageContent::Text("Successfully updated file '/Users/lloiseau/Work/test/main.py' with 22 bytes".to_string()),
                     tool_call_id: "toolu_018qHepKa8d4rbZ9qskd2vqw".to_string(),
                 },
             ])

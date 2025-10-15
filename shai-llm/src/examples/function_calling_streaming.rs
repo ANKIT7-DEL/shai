@@ -1,5 +1,6 @@
 // Function calling with streaming - expected to fail but let's see what happens!
-use shai_llm::{client::LlmClient, provider::LlmError, ChatCompletionParameters, ChatMessage, ChatMessageContent, 
+use shai_llm::{client::LlmClient, provider::LlmError};
+use openai_dive::v1::resources::chat::{ChatCompletionParameters, ChatMessage, ChatMessageContent,
                ChatCompletionTool, ChatCompletionToolType, ChatCompletionFunction};
 use serde_json::json;
 use openai_dive::v1::resources::chat::{ChatCompletionParametersBuilder, DeltaChatMessage, ChatCompletionToolChoice};

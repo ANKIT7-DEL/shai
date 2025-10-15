@@ -1,7 +1,8 @@
 use super::searcher::SearcherBrain;
 use crate::agent::Agent;
 use crate::logging::LoggingConfig;
-use shai_llm::{ChatMessage, ChatMessageContent, client::LlmClient};
+use openai_dive::v1::resources::chat::{ChatMessage, ChatMessageContent};
+use shai_llm::client::LlmClient;
 use std::sync::Arc;
 use tempfile::TempDir;
 use std::sync::Once;

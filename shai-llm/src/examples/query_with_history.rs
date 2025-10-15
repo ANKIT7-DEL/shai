@@ -1,5 +1,6 @@
 // Query with conversation history example
-use shai_llm::{client::LlmClient, provider::LlmError, ChatCompletionParameters, ChatMessage, ChatMessageContent};
+use shai_llm::{client::LlmClient, provider::LlmError};
+use openai_dive::v1::resources::chat::{ChatCompletionParameters, ChatMessage, ChatMessageContent};
 
 #[tokio::main]
 async fn main() -> Result<(), LlmError> {

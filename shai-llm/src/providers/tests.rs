@@ -396,7 +396,7 @@ mod integration_tests {
                         }])
                     },
                     ChatMessage::Tool {
-                        content: "Successfully updated file 'main.py' with 22 bytes".to_string(),
+                        content: ChatMessageContent::Text("Successfully updated file 'main.py' with 22 bytes".to_string()),
                         tool_call_id: "toolu_018qHepKa8d4rbZ9qskd2vqw".to_string(),
                     },
                 ])
@@ -486,7 +486,7 @@ mod integration_tests {
                         }])
                     },
                     ChatMessage::Tool {
-                        content: "File hello.py created successfully with 73 bytes".to_string(),
+                        content: ChatMessageContent::Text("File hello.py created successfully with 73 bytes".to_string()),
                         tool_call_id: "call_1".to_string(),
                     },
                     ChatMessage::User {
@@ -509,7 +509,7 @@ mod integration_tests {
                         }])
                     },
                     ChatMessage::Tool {
-                        content: "def hello_world():\n    print(\"Hello, World!\")\n\nif __name__ == \"__main__\":\n    hello_world()".to_string(),
+                        content: ChatMessageContent::Text("def hello_world():\n    print(\"Hello, World!\")\n\nif __name__ == \"__main__\":\n    hello_world()".to_string()),
                         tool_call_id: "call_2".to_string(),
                     },
                 ])
