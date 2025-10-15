@@ -1,4 +1,4 @@
-use shai_llm::ToolCallMethod;
+use shai_llm::{ToolCallMethod, ChatMessage};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{timeout, Duration};
 use crate::agent::AgentError;
@@ -17,6 +17,10 @@ pub enum AgentRequest {
     /// Send user input (cancels current task, adds to trace, resumes agent)
     SendUserInput{
         input: String
+    },
+    /// Send multiple messages as a trace (cancels current task, adds all to trace, resumes agent)
+    SendTrace{
+        messages: Vec<ChatMessage>
     },
     /// Switch method for tool call
     SwitchToolCallMethod {
@@ -113,6 +117,10 @@ impl AgentController {
 
     pub async fn send_user_input(&self, input: String) -> Result<(), AgentError> {
         self.send(AgentRequest::SendUserInput { input: input }).await.map(|_| Ok(()))?
+    }
+
+    pub async fn send_trace(&self, messages: Vec<ChatMessage>) -> Result<(), AgentError> {
+        self.send(AgentRequest::SendTrace { messages }).await.map(|_| Ok(()))?
     }
 
     pub async fn response_user_query(&self,  request_id: String, response: UserResponse) -> Result<(), AgentError> {

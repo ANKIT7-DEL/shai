@@ -400,15 +400,25 @@ impl AgentCore {
                 self.handle_event(InternalAgentEvent::CancelTask).await
                 .and({
                     // Emit UserInput event
-                    let _ = self.emit_event(AgentEvent::UserInput { 
-                        input: input.clone() 
+                    let _ = self.emit_event(AgentEvent::UserInput {
+                        input: input.clone()
                     }).await;
-                    
-                    self.trace.write().await.push(ChatMessage::User { 
-                        content: ChatMessageContent::Text(input), 
-                        name: None 
+
+                    self.trace.write().await.push(ChatMessage::User {
+                        content: ChatMessageContent::Text(input),
+                        name: None
                     });
-                    
+
+                    self.set_state(InternalAgentState::Running).await;
+                    Ok(AgentResponse::Ack)
+                })
+            }
+            AgentRequest::SendTrace{ messages } => {
+                self.handle_event(InternalAgentEvent::CancelTask).await
+                .and({
+                    // Add all messages to trace at once
+                    self.trace.write().await.extend(messages);
+
                     self.set_state(InternalAgentState::Running).await;
                     Ok(AgentResponse::Ack)
                 })

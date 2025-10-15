@@ -4,8 +4,6 @@ use std::sync::Arc;
 use tokio::sync::{broadcast::Receiver, Mutex};
 use tokio::task::JoinHandle;
 use tracing::debug;
-use openai_dive::v1::resources::chat::ChatMessageContentPart;
-use shai_llm::ChatMessageContent;
 use super::RequestLifecycle;
 
 
@@ -68,31 +66,7 @@ impl AgentSession {
         let controller_guard = self.controller.clone().lock_owned().await;
         debug!("[{}] - [{}] handling request", http_request_id, self.session_id);
 
-        // TODO
-        // make a new controller API to send a full trace
-        for msg in trace {
-            match msg {
-                ChatMessage::User { content, .. } => {
-                    let text = match content {
-                        ChatMessageContent::Text(t) => t,
-                        ChatMessageContent::ContentPart(parts) => {
-                            parts.iter()
-                                .filter_map(|p| match p {
-                                    ChatMessageContentPart::Text(text_part) => Some(text_part.text.as_str()),
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        }
-                        ChatMessageContent::None => String::new(),
-                    };
-                    if !text.is_empty() {
-                        controller_guard.send_user_input(text).await?;
-                    }
-                }
-                _ => {}
-            }
-        }
+        controller_guard.send_trace(trace).await?;
 
         let event_rx = self.event_rx.resubscribe();
         let controller = controller_guard.clone();
