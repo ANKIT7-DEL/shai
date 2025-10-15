@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use shai_core::agent::AgentEvent;
 use shai_llm::{ChatMessage, ChatMessageContent};
 use std::collections::HashMap;
-use tracing::debug;
 
 use super::types::{MultiModalStreamingResponse, ToolCall, ToolCallResult};
 use crate::streaming::EventFormatter;
@@ -40,7 +39,6 @@ impl EventFormatter for SimpleFormatter {
                     };
 
                     if let Some(text) = text_content {
-                        debug!("[{}] BrainResult text: {}", session_id, text);
                         return Some(MultiModalStreamingResponse {
                             id: session_id.to_string(),
                             model: self.model.clone(),

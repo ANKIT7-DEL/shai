@@ -10,7 +10,6 @@ use openai_dive::v1::resources::response::{
 use openai_dive::v1::resources::shared::Usage;
 use shai_core::agent::AgentEvent;
 use shai_llm::{ChatMessage, ChatMessageContent};
-use tracing::info;
 use uuid::Uuid;
 
 use super::types::ResponseStreamEvent;
@@ -125,8 +124,6 @@ impl EventFormatter for ResponseFormatter {
 
             // Tool calls
             AgentEvent::ToolCallStarted { call, .. } => {
-                info!("[{}] ToolCall: {}", session_id, call.tool_name);
-
                 let tool_output = ResponseOutput::FunctionToolCall(FunctionToolCall {
                     id: call.tool_call_id.clone(),
                     call_id: call.tool_call_id.clone(),
@@ -149,21 +146,13 @@ impl EventFormatter for ResponseFormatter {
 
                 let tool_status = match &result {
                     ToolResult::Success { .. } => {
-                        info!("[{}] ToolResult: {} ✓", session_id, call.tool_name);
                         InputItemStatus::Completed
                     }
-                    ToolResult::Error { error, .. } => {
-                        let error_oneline = error.lines().next().unwrap_or(error);
-                        info!("[{}] ToolResult: {} ✗ {}", session_id, call.tool_name, error_oneline);
-                        InputItemStatus::Incomplete
-                    }
-                    ToolResult::Denied => {
-                        info!("[{}] ToolResult: {} ⊘ Permission denied", session_id, call.tool_name);
+                    _ => {
                         InputItemStatus::Incomplete
                     }
                 };
 
-                // Update the tool call in output
                 if let Some(idx) = self.output.iter().position(|o| {
                     if let ResponseOutput::FunctionToolCall(tc) = o {
                         tc.id == call.tool_call_id
@@ -188,14 +177,11 @@ impl EventFormatter for ResponseFormatter {
                 None
             }
 
-            // Agent completed
             AgentEvent::Completed { message, success, .. } => {
                 if !message.is_empty() {
                     self.accumulated_text = message;
                 }
-                info!("[{}] Completed", session_id);
 
-                // Add final message to output
                 let msg_output = ResponseOutput::Message(OutputMessage {
                     id: Uuid::new_v4().to_string(),
                     role: Role::Assistant,
@@ -227,9 +213,6 @@ impl EventFormatter for ResponseFormatter {
             AgentEvent::StatusChanged { new_status, .. } => {
                 use shai_core::agent::PublicAgentState;
                 if matches!(new_status, PublicAgentState::Paused { .. }) {
-                    info!("[{}] Paused", session_id);
-
-                    // Add final message to output
                     let msg_output = ResponseOutput::Message(OutputMessage {
                         id: Uuid::new_v4().to_string(),
                         role: Role::Assistant,
@@ -253,12 +236,6 @@ impl EventFormatter for ResponseFormatter {
                 }
                 None
             }
-
-            AgentEvent::Error { error } => {
-                tracing::error!("[{}] Agent error: {}", session_id, error);
-                None
-            }
-
             _ => None,
         }
     }

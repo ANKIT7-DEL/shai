@@ -5,6 +5,8 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use shai_core::agent::AgentBuilder;
+use crate::session::log_event;
+
 use super::AgentSession;
 
 /// Configuration for the session manager
@@ -61,10 +63,18 @@ impl SessionManager {
         let controller = agent.controller();
         let event_rx = agent.watch();
 
+        // Spawn logging task alongside agent
+        let mut event_for_logger = event_rx.resubscribe();
+        let sid_for_logger = session_id.to_string();
+        let logging_task = tokio::spawn(async move {
+            while let Ok(event) = event_for_logger.recv().await {
+                log_event(&event, &sid_for_logger);
+            }
+        });
+
         // Spawn agent task with cleanup logic
         let sessions_for_cleanup = self.sessions.clone();
         let sid_for_cleanup = session_id.to_string();
-
         let agent_task = tokio::spawn(async move {
             match agent.run().await {
                 Ok(_) => {
@@ -82,6 +92,7 @@ impl SessionManager {
             session_id.to_string(),
             controller,
             event_rx,
+            logging_task,
             agent_task,
             agent_name,
             ephemeral,

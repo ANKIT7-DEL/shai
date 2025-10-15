@@ -8,8 +8,8 @@ use super::{PermissionResponse, PublicAgentState, UserResponse};
 /// Commands that can be sent to a running agent
 #[derive(Debug, Clone)]
 pub enum AgentRequest {
-    /// Cancel agent execution
-    Cancel,
+    /// Stop the Agent
+    Terminate,
     /// Stop the currently executing task
     StopCurrentTask,    
     /// Send user input (cancels current task, adds to trace, resumes agent)
@@ -100,11 +100,11 @@ impl AgentController {
         Ok(())
     }
 
-    pub async fn cancel(&self) -> Result<(), AgentError> {
-        self.send(AgentRequest::Cancel).await.map(|_| Ok(()))?
+    pub async fn terminate(&self) -> Result<(), AgentError> {
+        self.send(AgentRequest::Terminate).await.map(|_| Ok(()))?
     }
 
-    pub async fn test_stop_current_task(&self) -> Result<(), AgentError> {
+    pub async fn stop_current_task(&self) -> Result<(), AgentError> {
         self.send(AgentRequest::StopCurrentTask).await.map(|_| Ok(()))?
     }
 

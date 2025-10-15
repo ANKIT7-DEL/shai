@@ -374,7 +374,7 @@ impl App<'_> {
             UserAction::Nope => {}
             UserAction::CancelTask => {
                 if let Some(ref agent) = self.agent {
-                    let _ = agent.controller.test_stop_current_task().await;
+                    let _ = agent.controller.stop_current_task().await;
                     self.input.alert_msg("Task cancelled", Duration::from_secs(1));
                 }
             }

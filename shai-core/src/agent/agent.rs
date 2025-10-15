@@ -376,10 +376,10 @@ impl AgentCore {
                 let enabled = guard.is_sudo();
                 Ok(AgentResponse::SudoStatus { enabled })
             }
-            AgentRequest::Cancel=> {
+            AgentRequest::Terminate=> {
                 self.handle_event(InternalAgentEvent::CancelTask).await
                 .and({
-                    self.set_state(InternalAgentState::Failed { error: "The agent was cancelled".to_string() }).await;
+                    self.set_state(InternalAgentState::Completed { success: false }).await;
                     Ok(AgentResponse::Ack)
                 })
             }

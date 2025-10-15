@@ -6,7 +6,6 @@ use openai_dive::v1::resources::chat::{
 use openai_dive::v1::resources::shared::FinishReason;
 use shai_core::agent::AgentEvent;
 use shai_llm::{ChatMessage, ChatMessageContent as LlmChatMessageContent};
-use tracing::{debug, error};
 use uuid::Uuid;
 
 use crate::streaming::EventFormatter;
@@ -58,7 +57,7 @@ impl EventFormatter for ChatCompletionFormatter {
     async fn format_event(
         &mut self,
         event: AgentEvent,
-        session_id: &str,
+        _session_id: &str,
     ) -> Option<Self::Output> {
         match event {
             // Capture assistant messages from brain results
@@ -78,8 +77,6 @@ impl EventFormatter for ChatCompletionFormatter {
 
             // Tool call started - stream as thinking delta
             AgentEvent::ToolCallStarted { call, .. } => {
-                debug!("[{}] ToolCall: {}", session_id, call.tool_name);
-
                 let thinking_text = format!("[toolcall: {}]", call.tool_name);
                 let delta = DeltaChatMessage::Assistant {
                     content: None,
@@ -98,16 +95,13 @@ impl EventFormatter for ChatCompletionFormatter {
 
                 let thinking_text = match &result {
                     ToolResult::Success { .. } => {
-                        debug!("[{}] ToolResult: {} ✓", session_id, call.tool_name);
                         format!("[tool succeeded: {}]", call.tool_name)
                     }
                     ToolResult::Error { error, .. } => {
                         let error_oneline = error.lines().next().unwrap_or(error);
-                        debug!("[{}] ToolResult: {} ✗ {}", session_id, call.tool_name, error_oneline);
                         format!("[tool failed: {} - {}]", call.tool_name, error_oneline)
                     }
                     ToolResult::Denied => {
-                        debug!("[{}] ToolResult: {} ⊘ denied", session_id, call.tool_name);
                         format!("[tool denied: {}]", call.tool_name)
                     }
                 };
@@ -128,7 +122,6 @@ impl EventFormatter for ChatCompletionFormatter {
                 if !message.is_empty() {
                     self.accumulated_text = message;
                 }
-                debug!("[{}] Completed", session_id);
 
                 // Send the final content delta
                 let content_delta = DeltaChatMessage::Assistant {
@@ -147,8 +140,6 @@ impl EventFormatter for ChatCompletionFormatter {
             }
 
             AgentEvent::Error { error } => {
-                error!("[{}] Agent error: {}", session_id, error);
-
                 // Stream error as content delta
                 let delta = DeltaChatMessage::Assistant {
                     content: Some(ChatMessageContent::Text(format!("Error: {}", error))),
