@@ -70,11 +70,11 @@ pub async fn start_server(
     let app = Router::new()
         // Simple API
         .route("/v1/multimodal", post(apis::simple::handle_multimodal_query_stream))
-        .route("/v1/multimodal/:session_id", post(apis::simple::handle_multimodal_query_stream))
+        .route("/v1/multimodal/{session_id}", post(apis::simple::handle_multimodal_query_stream))
         // OpenAI-compatible Response API
         .route("/v1/responses", post(apis::openai::handle_response))
-        .route("/v1/responses/:response_id", get(apis::openai::handle_get_response))
-        .route("/v1/responses/:response_id/cancel", post(apis::openai::handle_cancel_response))
+        .route("/v1/responses/{response_id}", get(apis::openai::handle_get_response))
+        .route("/v1/responses/{response_id}/cancel", post(apis::openai::handle_cancel_response))
         // OpenAI-compatible Chat Completion API
         .route("/v1/chat/completions", post(apis::openai::handle_chat_completion))
         .layer(CorsLayer::permissive())
