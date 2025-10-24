@@ -131,6 +131,9 @@ enum Commands {
     },
     /// Start HTTP server with SSE streaming
     Serve {
+        /// Host to bind to (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
         /// Port to bind to
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -176,8 +179,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let command_str = command.join(" ");
             handle_postcmd(exit_code, command_str).await?;
         },
-        Some(Commands::Serve { port, agent, ephemeral }) => {
-            handle_serve(port, agent, ephemeral).await?;
+        Some(Commands::Serve { host, port, agent, ephemeral }) => {
+            handle_serve(host, port, agent, ephemeral).await?;
         },
         None => {
             // Check for stdin input or trailing arguments
@@ -464,7 +467,7 @@ pub async fn handle_postcmd(exit_code: i32, command: String) -> Result<(), Box<d
     Ok(())
 }
 
-async fn handle_serve(port: u16, agent: Option<String>, ephemeral: bool) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_serve(host: String, port: u16, agent: Option<String>, ephemeral: bool) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing for HTTP server logs
     tracing_subscriber::fmt()
         .with_target(false)
@@ -474,7 +477,7 @@ async fn handle_serve(port: u16, agent: Option<String>, ephemeral: bool) -> Resu
 
     println!("{}", logo_cyan());
 
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("{}:{}", host, port);
     let config = shai_http::ServerConfig::new(addr)
         .with_ephemeral(ephemeral)
         .with_max_sessions(Some(1));
