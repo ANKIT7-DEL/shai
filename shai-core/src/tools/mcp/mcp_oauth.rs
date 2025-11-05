@@ -1,6 +1,6 @@
 use oauth2::{
     AuthUrl, TokenUrl, ClientId, ClientSecret, RedirectUrl, CsrfToken,
-    AuthorizationCode, PkceCodeChallenge, Scope, 
+    AuthorizationCode, PkceCodeChallenge, Scope,
     basic::BasicClient, reqwest::async_http_client, TokenResponse,
     AuthType, url::Url,
 };
@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
+use super::mcp_config::OAuthToken;
 
 #[derive(Serialize)]
 struct ClientRegistrationRequest {
@@ -24,7 +25,7 @@ struct ClientRegistrationResponse {
     client_secret: Option<String>,
 }
 
-pub async fn signin_oauth(base_url: &str) -> anyhow::Result<String> {
+pub async fn signin_oauth(base_url: &str) -> anyhow::Result<OAuthToken> {
     // Extract the root domain for .well-known endpoint (OAuth standard)
     let url = Url::parse(base_url)?;
     let root_url = format!("{}://{}", url.scheme(), url.host_str().unwrap_or(""));
@@ -221,5 +222,17 @@ pub async fn signin_oauth(base_url: &str) -> anyhow::Result<String> {
         .request_async(async_http_client)
         .await?;
 
-    Ok(token_response.access_token().secret().to_string())
+    // Calculate expiration time
+    let expires_at = token_response.expires_in().map(|duration| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        now + duration.as_secs() as i64
+    });
+
+    Ok(OAuthToken {
+        access_token: token_response.access_token().secret().to_string(),
+        expires_at,
+    })
 }

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use shai_llm::ToolCallMethod;
 use crate::tools::mcp::McpConfig;
+use super::config::ShaiConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentProviderConfig {
@@ -35,6 +36,7 @@ pub struct AgentTools {
 pub struct AgentConfig {
     pub name: String,
     pub description: String,
+    #[serde(default = "default_llm_provider")]
     pub llm_provider: AgentProviderConfig,
     #[serde(default)]
     pub tools: AgentTools,
@@ -44,6 +46,23 @@ pub struct AgentConfig {
     pub max_tokens: u32,
     #[serde(default = "default_temperature")]
     pub temperature: f32,
+}
+
+fn default_llm_provider() -> AgentProviderConfig {
+    // Load the default provider from ShaiConfig
+    let shai_config = ShaiConfig::load()
+        .unwrap_or_else(|_| ShaiConfig::default());
+
+    let provider_config = shai_config
+        .get_selected_provider()
+        .expect("No provider configured in default config");
+
+    AgentProviderConfig {
+        provider: provider_config.provider.clone(),
+        env_vars: provider_config.env_vars.clone(),
+        model: provider_config.model.clone(),
+        tool_method: provider_config.tool_method.clone(),
+    }
 }
 
 fn default_system_prompt() -> String {

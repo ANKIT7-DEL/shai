@@ -148,7 +148,7 @@ mod tests {
         // Test HTTP config
         let http_config = McpConfig::Http {
             url: "http://localhost:8080".to_string(),
-            bearer_token: None
+            auth: None
         };
         let _http_client = create_mcp_client(http_config);
         println!("✅ Successfully created HttpClient via factory");

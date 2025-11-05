@@ -199,8 +199,8 @@ impl ShaiConfig {
             .map(|(name, config)| {
                 let description = match config {
                     McpConfig::Stdio { command, .. } => format!("stdio: {}", command),
-                    McpConfig::Http { url, bearer_token } => {
-                        if bearer_token.is_some() {
+                    McpConfig::Http { url, auth } => {
+                        if auth.is_some() {
                             format!("http: {} (authenticated)", url)
                         } else {
                             format!("http: {}", url)

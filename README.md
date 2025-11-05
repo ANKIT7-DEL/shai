@@ -137,16 +137,17 @@ Instead of a single global configuration, you can create custom agent in a separ
 
 [`.ovh.config`](./.ovh.config) contains an example of a custom configuration with an remote MCP server configured.
 
-Place this file in `~/.config/shai/agents/example.config`, you can then list the agents available with:
+Place this file in `~/.config/shai/agents/ovh.config`, you can then list the agents available with:
 
 ```bash
+curl https://raw.githubusercontent.com/ovh/shai/refs/heads/main/.ovh.config -o ˜/.config/shai/agents/ovh.config
 shai agent list
 ```
 
 You can run shai with this specific agent with the `agent` subcommand:
 
 ```bash
-shai agent example
+shai agent ovh
 ```
 
 ### OVHCloud Endpoints

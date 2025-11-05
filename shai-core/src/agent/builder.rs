@@ -146,7 +146,7 @@ impl AgentBuilder {
             LlmClient::create_provider(&config.llm_provider.provider, &config.llm_provider.env_vars)
                 .map_err(|e| AgentError::LlmError(e.to_string()))?
         );
-        
+
         // Create brain with custom system prompt and temperature
         let brain = Box::new(CoderBrain::with_custom_prompt(
             llm_client.clone(),
@@ -275,43 +275,57 @@ impl AgentBuilder {
     /// Handle OAuth flow for MCP connections if needed
     async fn mcp_check_oauth(mcp_name: &str, mcp_config: &mut McpConfig) -> Result<bool, AgentError> {
         use crate::tools::mcp::McpConfig;
-        
         let mut config_changed = false;
-        
+
         // Only handle HTTP configs that might need OAuth
-        if let McpConfig::Http { url, bearer_token } = mcp_config {
-            // Test connection with current config
-            let test_config = McpConfig::Http { 
-                url: url.clone(), 
-                bearer_token: bearer_token.clone() 
-            };
-            let mut test_client = create_mcp_client(test_config);
-            match test_client.connect().await {
-                Ok(_) => {
-                    if bearer_token.is_some() {
+        if let McpConfig::Http { url, auth } = mcp_config {
+            let needs_new_token = match auth {
+                Some(token) if token.is_expired() => {
+                    eprintln!("\x1b[2m░ MCP '{}' token expired, refreshing...\x1b[0m", mcp_name);
+                    true
+                }
+                Some(_) => {
+                    // Test connection with existing token
+                    let test_config = McpConfig::Http { url: url.clone(), auth: auth.clone() };
+                    let mut test_client = create_mcp_client(test_config);
+                    if test_client.connect().await.is_ok() {
                         eprintln!("\x1b[2m░ MCP '{}' connected (authenticated)\x1b[0m", mcp_name);
+                        false
                     } else {
-                        eprintln!("\x1b[2m░ MCP '{}' connected (no auth)\x1b[0m", mcp_name);
+                        eprintln!("\x1b[2m░ MCP '{}' authentication failed, refreshing token...\x1b[0m", mcp_name);
+                        true
                     }
                 }
-                Err(_) => {
-                    eprintln!("\x1b[2m░ MCP '{}' connection failed, starting OAuth flow...\x1b[0m", mcp_name);
-                    let url_clone = url.clone();
-                    match signin_oauth(&url_clone).await {
-                        Ok(token) => {
-                            eprintln!("\x1b[2m░ MCP '{}' connected (OAuth successful)\x1b[0m", mcp_name);
-                            *bearer_token = Some(token);
-                            config_changed = true;
-                        }
-                        Err(e) => {
-                            return Err(AgentError::ConfigurationError(format!("OAuth failed for MCP '{}': {}", mcp_name, e)));
-                        }
+                None => {
+                    // Test connection without auth
+                    let test_config = McpConfig::Http { url: url.clone(), auth: None };
+                    let mut test_client = create_mcp_client(test_config);
+                    if test_client.connect().await.is_ok() {
+                        eprintln!("\x1b[2m░ MCP '{}' connected (no auth required)\x1b[0m", mcp_name);
+                        false
+                    } else {
+                        eprintln!("\x1b[2m░ MCP '{}' requires authentication, starting OAuth flow...\x1b[0m", mcp_name);
+                        true
+                    }
+                }
+            };
+
+            if needs_new_token {
+                let url_clone = url.clone();
+                match signin_oauth(&url_clone).await {
+                    Ok(token) => {
+                        eprintln!("\x1b[2m░ MCP '{}' OAuth successful\x1b[0m", mcp_name);
+                        *auth = Some(token);
+                        config_changed = true;
+                    }
+                    Err(e) => {
+                        return Err(AgentError::ConfigurationError(format!("OAuth failed for MCP '{}': {}", mcp_name, e)));
                     }
                 }
             }
         }
         // SSE and Stdio don't need OAuth handling for now
-        
+
         Ok(config_changed)
     }
 }
