@@ -140,7 +140,7 @@ Instead of a single global configuration, you can create custom agent in a separ
 Place this file in `~/.config/shai/agents/ovh.config`, you can then list the agents available with:
 
 ```bash
-curl https://raw.githubusercontent.com/ovh/shai/refs/heads/main/.ovh.config -o ˜/.config/shai/agents/ovh.config
+curl https://raw.githubusercontent.com/ovh/shai/refs/heads/main/.ovh.config -o ~/.config/shai/agents/ovh.config
 shai agent list
 ```
 
