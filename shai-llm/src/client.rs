@@ -256,8 +256,11 @@ impl LlmClient {
             .fix_mistral_alternating();
 
         let response = self.provider
-            .chat(request)
-            .await?
+            .chat(request.clone())
+            .await
+            .inspect_err(|error| {
+                crate::logging::log_llm_error(&request, error, self.provider_name());
+            })?
             .extract_think_content();
 
         Ok(response)

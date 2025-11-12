@@ -367,6 +367,10 @@ impl AgentCore {
             AgentRequest::GetState => {
                 Ok(AgentResponse::State { state: self.state.to_public()})
             }
+            AgentRequest::GetTrace => {
+                let trace = self.trace.read().await.clone();
+                Ok(AgentResponse::Trace { trace })
+            }
             AgentRequest::Sudo(operation) => {
                 let mut guard = self.permissions.write().await;
                 match operation {

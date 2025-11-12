@@ -46,9 +46,9 @@ async fn handle_response_stream(
 
     // Get or create session agent based on whether previous_response_id was provided
     let agent_session = if payload.previous_response_id.is_some() {
-        // previous_response_id provided -> must exist, error if not
+        // previous_response_id provided -> must exist (in memory or disk), error if not
         state.session_manager
-            .get_session(&request_id.to_string(), &session_id)
+            .get_session(&request_id.to_string(), &session_id, model.clone())
             .await
             .map_err(|e| ErrorResponse::invalid_request(format!("Previous response not found: {}", e)))?
     } else {
@@ -95,9 +95,11 @@ pub async fn handle_get_response(
     let request_id = Uuid::new_v4();
     info!("[{}] GET /v1/responses/{}", request_id, response_id);
 
-    // Get the existing session
+    // Get the existing session (note: without agent_name, will only check memory, not disk)
+    // For GET we don't have the model from request, so we use the session's agent_name
+    // This means GET can only access in-memory sessions
     let agent_session = state.session_manager
-        .get_session(&request_id.to_string(), &response_id)
+        .get_session(&request_id.to_string(), &response_id, "default".to_string())
         .await
         .map_err(|e| ErrorResponse::invalid_request(format!("Response not found: {}", e)))?;
 

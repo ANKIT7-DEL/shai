@@ -13,8 +13,10 @@ pub enum AgentRequest {
     Terminate,
     /// Stop the currently executing task
     StopCurrentTask,    
-    /// Send user input (cancels current task, adds to trace, resumes agent)
+    /// Get current agent state
     GetState,
+    /// Get the conversation trace
+    GetTrace,
     /// Send user input (cancels current task, adds to trace, resumes agent)
     SendUserInput{
         input: String
@@ -56,6 +58,9 @@ pub enum AgentResponse {
     },
     State {
         state: PublicAgentState
+    },
+    Trace {
+        trace: Vec<ChatMessage>
     },
     SudoStatus {
         enabled: bool
@@ -136,6 +141,13 @@ impl AgentController {
         match self.send(AgentRequest::GetState).await? {
             AgentResponse::State{state} => Ok(state),
             _ => Err(AgentError::InvalidResponse("Expected State response".to_string()))
+        }
+    }
+
+    pub async fn get_trace(&self) -> Result<Vec<ChatMessage>, AgentError> {
+        match self.send(AgentRequest::GetTrace).await? {
+            AgentResponse::Trace{trace} => Ok(trace),
+            _ => Err(AgentError::InvalidResponse("Expected Trace response".to_string()))
         }
     }
 

@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
+use openai_dive::v1::resources::chat::ChatMessage;
 
 use shai_core::agent::AgentBuilder;
 use crate::session::{log_event, logger::colored_session_id};
+use crate::session::persist::SessionPersist;
 
 use super::AgentSession;
 
@@ -50,15 +52,21 @@ impl SessionManager {
         session_id: &str,
         agent_name: Option<String>,
         ephemeral: bool,
+        trace: Option<Vec<ChatMessage>>,
     ) -> Result<Arc<AgentSession>, AgentError> {
         info!("[{}] - {} Creating new session", http_request_id, colored_session_id(session_id));
 
-        // Build the agent
-        let mut agent = AgentBuilder::create(agent_name.clone().filter(|name| name != "default"))
+        // Build the agent with optional trace
+        let mut builder = AgentBuilder::create(agent_name.clone().filter(|name| name != "default"))
             .await
             .map_err(|e| AgentError::ExecutionError(format!("Failed to create agent: {}", e)))?
-            .sudo()
-            .build();
+            .sudo();
+
+        if let Some(trace) = trace {
+            builder = builder.with_traces(trace);
+        }
+
+        let mut agent = builder.build();
 
         let controller = agent.controller();
         let event_rx = agent.watch();
@@ -102,22 +110,50 @@ impl SessionManager {
     }
 
     /// Get an existing session by ID
-    /// Returns error if session doesn't exist
+    /// If not in memory, attempts to load from disk using the provided agent_name
+    /// Returns error if session doesn't exist in memory or on disk
     pub async fn get_session(
         &self,
         http_request_id: &str,
         session_id: &str,
+        agent_name: String,
     ) -> Result<Arc<AgentSession>, AgentError> {
-        let sessions = self.sessions.lock().await;
+        // First check in-memory sessions
+        {
+            let sessions = self.sessions.lock().await;
+            if let Some(session) = sessions.get(session_id) {
+                info!("[{}] - {} Using existing in-memory session", http_request_id, colored_session_id(&session_id));
+                return Ok(session.clone());
+            }
+        }
 
-        if let Some(session) = sessions.get(session_id) {
-            info!("[{}] - {} Using existing session", http_request_id, colored_session_id(&session_id));
-            Ok(session.clone())
-        } else {
-            Err(AgentError::ExecutionError(format!(
-                "Session not found: {}",
-                session_id
-            )))
+        // Try to load from disk
+        match SessionPersist::load_session(session_id) {
+            Ok(session_data) => {
+                info!("[{}] - {} Loading session from disk", http_request_id, colored_session_id(session_id));
+
+                // Restore the session with the saved trace
+                let session = self.create_session(
+                    &http_request_id.to_string(),
+                    session_id,
+                    Some(agent_name),
+                    false, // Loaded sessions are not ephemeral
+                    Some(session_data.trace), // Initialize with saved trace
+                ).await?;
+
+                // Store in manager
+                let mut sessions = self.sessions.lock().await;
+                sessions.insert(session_id.to_string(), session.clone());
+
+                Ok(session)
+            }
+            Err(e) => {
+                error!("Failed to load session {} from disk: {}", session_id, e);
+                Err(AgentError::ExecutionError(format!(
+                    "Session not found: {}",
+                    session_id
+                )))
+            }
         }
     }
 
@@ -157,7 +193,7 @@ impl SessionManager {
             )));
         }
 
-        let session = self.create_session(&http_request_id.to_string(), session_id, agent_name, ephemeral).await?;
+        let session = self.create_session(&http_request_id.to_string(), session_id, agent_name, ephemeral, None).await?;
         sessions.insert(session_id.to_string(), session.clone());
 
         Ok(session)

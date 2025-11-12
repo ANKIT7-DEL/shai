@@ -3,6 +3,7 @@ pub mod providers;
 pub mod provider;
 pub mod chat;
 pub mod tool;
+pub mod logging;
 
 // Re-export our client
 pub use client::LlmClient;

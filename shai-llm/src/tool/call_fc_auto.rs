@@ -53,16 +53,6 @@ impl ToolCallFunctionCallingAuto for LlmClient {
         let response = self
             .chat(request.clone())
             .await
-            .inspect_err(|e| {
-                // Save failed request to file for debugging
-                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-                if let Ok(json) = serde_json::to_string_pretty(&request) {
-                    let filename = format!("logs/request_{}.json", timestamp);
-                    let _ = std::path::Path::new(&filename).parent()
-                    .map(std::fs::create_dir_all).unwrap_or(Ok(()))
-                    .and_then(|_| std::fs::write(&filename, json));
-                }
-            })
             .map_err(|e| LlmError::from(e.to_string()))?;
 
         Ok(response)

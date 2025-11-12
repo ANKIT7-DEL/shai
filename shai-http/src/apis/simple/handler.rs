@@ -10,18 +10,34 @@ use super::types::{MultiModalQuery, Message};
 use super::formatter::SimpleFormatter;
 use crate::{session_to_sse_stream, ApiJson, ErrorResponse, ServerState};
 
-/// Handle multimodal query - streaming response
+/// Handle multimodal query without explicit session id (ephemeral session)
 pub async fn handle_multimodal_query_stream(
     State(state): State<ServerState>,
-    session_id_param: Option<Path<String>>,
     ApiJson(payload): ApiJson<MultiModalQuery>,
+) -> Result<Response, ErrorResponse> {
+    handle_multimodal_query_stream_internal(state, None, payload).await
+}
+
+/// Handle multimodal query with provided session id (persistent session)
+pub async fn handle_multimodal_query_stream_with_session(
+    State(state): State<ServerState>,
+    Path(session_id): Path<String>,
+    ApiJson(payload): ApiJson<MultiModalQuery>,
+) -> Result<Response, ErrorResponse> {
+    handle_multimodal_query_stream_internal(state, Some(session_id), payload).await
+}
+
+/// Shared implementation for multimodal query handlers
+async fn handle_multimodal_query_stream_internal(
+    state: ServerState,
+    session_id_param: Option<String>,
+    payload: MultiModalQuery,
 ) -> Result<Response, ErrorResponse> {
     let request_id = Uuid::new_v4();
 
     // Determine session_id: use provided, or generate ephemeral
     let is_ephemeral = session_id_param.is_none();
     let session_id = session_id_param
-        .map(|Path(id)| id)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     info!(
@@ -40,11 +56,11 @@ pub async fn handle_multimodal_query_stream(
             .await
             .map_err(|e| ErrorResponse::internal_error(format!("Failed to create session: {}", e)))?
     } else {
-        // Persistent -> get existing or create new
-        match state.session_manager.get_session(&request_id.to_string(), &session_id).await {
+        // Persistent -> get existing (from memory or disk) or create new
+        match state.session_manager.get_session(&request_id.to_string(), &session_id, payload.model.clone()).await {
             Ok(session) => session,
             Err(_) => {
-                // Doesn't exist, create it
+                // Doesn't exist in memory or disk, create it
                 state.session_manager
                     .create_new_session(&request_id.to_string(), &session_id, Some(payload.model.clone()), is_ephemeral)
                     .await
