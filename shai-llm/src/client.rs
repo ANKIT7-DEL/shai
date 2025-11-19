@@ -178,46 +178,57 @@ impl LlmClient {
         ]
     }
 
+    /// Helper function to get a value from config or fall back to environment variable
+    fn get_or_env(env_values: &std::collections::HashMap<String, String>, key: &str) -> Option<String> {
+        env_values.get(key).cloned().or_else(|| {
+            std::env::var(key).ok().map(|val| {
+                //eprintln!("\x1b[2m[llm] Using {} from environment variable\x1b[0m", key);
+                val
+            })
+        })
+    }
+
     /// Create a provider dynamically based on name and environment values
+    /// Falls back to actual environment variables if not found in config
     pub fn create_provider(provider_name: &str, env_values: &std::collections::HashMap<String, String>) -> Result<Self, LlmError> {
         match provider_name {
             "openai" => {
-                let api_key = env_values.get("OPENAI_API_KEY")
-                    .ok_or("OPENAI_API_KEY not found")?;
-                Ok(Self::openai(api_key.clone()))
+                let api_key = Self::get_or_env(env_values, "OPENAI_API_KEY")
+                    .ok_or("OPENAI_API_KEY not found in config or environment")?;
+                Ok(Self::openai(api_key))
             },
             "anthropic" => {
-                let api_key = env_values.get("ANTHROPIC_API_KEY")
-                    .ok_or("ANTHROPIC_API_KEY not found")?;
-                Ok(Self::anthropic(api_key.clone()))
+                let api_key = Self::get_or_env(env_values, "ANTHROPIC_API_KEY")
+                    .ok_or("ANTHROPIC_API_KEY not found in config or environment")?;
+                Ok(Self::anthropic(api_key))
             },
             "ollama" => {
-                let base_url = env_values.get("OLLAMA_BASE_URL")
-                    .cloned()
+                let base_url = Self::get_or_env(env_values, "OLLAMA_BASE_URL")
                     .unwrap_or_else(|| "http://localhost:11434/v1".to_string());
                 Ok(Self::ollama(base_url))
             },
             "mistral" => {
-                let api_key = env_values.get("MISTRAL_API_KEY")
-                    .ok_or("MISTRAL_API_KEY not found")?;
-                Ok(Self::mistral(api_key.clone()))
+                let api_key = Self::get_or_env(env_values, "MISTRAL_API_KEY")
+                    .ok_or("MISTRAL_API_KEY not found in config or environment")?;
+                Ok(Self::mistral(api_key))
             },
             "ovhcloud" => {
-                let api_key = env_values.get("OVH_API_KEY").map_or("", |v| v);
-                let base_url = env_values.get("OVH_BASE_URL").cloned();
-                Ok(Self::ovhcloud(api_key.to_string(), base_url))
+                let api_key = Self::get_or_env(env_values, "OVH_API_KEY")
+                    .unwrap_or_else(|| String::new());
+                let base_url = Self::get_or_env(env_values, "OVH_BASE_URL");
+                Ok(Self::ovhcloud(api_key, base_url))
             },
             "openrouter" => {
-                let api_key = env_values.get("OPENROUTER_API_KEY")
-                    .ok_or("OPENROUTER_API_KEY not found")?;
-                Ok(Self::openrouter(api_key.clone()))
+                let api_key = Self::get_or_env(env_values, "OPENROUTER_API_KEY")
+                    .ok_or("OPENROUTER_API_KEY not found in config or environment")?;
+                Ok(Self::openrouter(api_key))
             },
             "openai_compatible" => {
-                let api_key = env_values.get("OPENAI_COMPATIBLE_API_KEY")
-                    .ok_or("OPENAI_COMPATIBLE_API_KEY not found")?;
-                let base_url = env_values.get("OPENAI_COMPATIBLE_BASE_URL")
-                    .ok_or("OPENAI_COMPATIBLE_BASE_URL not found")?;
-                Ok(Self::compatible(api_key.clone(), base_url.clone()))
+                let api_key = Self::get_or_env(env_values, "OPENAI_COMPATIBLE_API_KEY")
+                    .ok_or("OPENAI_COMPATIBLE_API_KEY not found in config or environment")?;
+                let base_url = Self::get_or_env(env_values, "OPENAI_COMPATIBLE_BASE_URL")
+                    .ok_or("OPENAI_COMPATIBLE_BASE_URL not found in config or environment")?;
+                Ok(Self::compatible(api_key, base_url))
             },
             _ => Err(format!("Unknown provider: {}", provider_name).into())
         }
