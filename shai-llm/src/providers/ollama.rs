@@ -22,7 +22,7 @@ impl OllamaProvider {
         Self { client }
     }
 
-    /// Create Ollama provider from environment variables
+    // Create Ollama provider from environment variables
     pub fn from_env() -> Option<Self> {
         // Ollama is always available as it defaults to localhost
         Some(Self::new(
